@@ -1,8 +1,18 @@
-import { FileText, Cpu, AlertCircle } from "lucide-react";
+import { FileText, Cpu, AlertCircle, Target } from "lucide-react";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal }) {
+  const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
+  const goalReached = writingGoal > 0 && stats.words >= writingGoal;
+
   return (
     <footer className="statusbar">
+      {writingGoal > 0 && (
+        <div
+          className={`statusbar__goal-bar${goalReached ? " reached" : ""}`}
+          style={{ width: `${goalPct}%` }}
+        />
+      )}
+
       <div className="statusbar__item">
         <FileText size={12} />
         <span>{stats.words} كلمة</span>
@@ -11,6 +21,21 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       <div className="statusbar__item">
         <span>{stats.chars} حرف</span>
       </div>
+
+      {sessionWords > 0 && (
+        <div className="statusbar__item" style={{ color: "var(--primary)" }}>
+          <span>+{sessionWords} هذه الجلسة</span>
+        </div>
+      )}
+
+      {writingGoal > 0 && (
+        <div className="statusbar__item" style={{ color: goalReached ? "#34a853" : "var(--text-muted)" }}>
+          <Target size={12} />
+          <span>
+            {goalReached ? "✓ " : ""}{stats.words} / {writingGoal}
+          </span>
+        </div>
+      )}
 
       {issueCount > 0 && (
         <div className="statusbar__item" style={{ color: "#ea4335" }}>

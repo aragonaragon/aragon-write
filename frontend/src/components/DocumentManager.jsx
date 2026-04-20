@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, FilePlus, Trash2, FileText, Download } from "lucide-react";
+import { X, FilePlus, Trash2, BookOpen, LogOut } from "lucide-react";
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -21,6 +21,7 @@ function downloadFile(content, filename, mimeType) {
 
 export default function DocumentManager({
   documents, currentDocId, onOpen, onCreate, onDelete, onClose, editor,
+  projectMode, projectTitle, onExitProject,
 }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -67,8 +68,24 @@ export default function DocumentManager({
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal__header">
-          <h2 className="modal__title">المستندات</h2>
-          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+          <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {projectMode && <BookOpen size={18} />}
+            {projectMode ? (projectTitle || "الرواية") : "المستندات"}
+          </h2>
+          <div style={{ display: "flex", gap: 6 }}>
+            {projectMode && onExitProject && (
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: "4px 10px", gap: 4 }}
+                onClick={() => { onExitProject(); onClose(); }}
+                title="الخروج من الرواية"
+              >
+                <LogOut size={13} />
+                خروج
+              </button>
+            )}
+            <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
 
         <div className="modal__body">
@@ -76,7 +93,7 @@ export default function DocumentManager({
             {/* New document card */}
             <button className="doc-new-card" onClick={onCreate}>
               <FilePlus size={28} />
-              <span>مستند جديد</span>
+              <span>{projectMode ? "فصل جديد" : "مستند جديد"}</span>
             </button>
 
             {/* Document cards */}
@@ -123,7 +140,7 @@ export default function DocumentManager({
 
         <div className="modal__footer">
           <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: "auto" }}>
-            {documents.length} مستند | حفظ تلقائي كل 1.5 ثانية
+            {documents.length} {projectMode ? "فصل" : "مستند"} | {projectMode ? "محفوظ على القرص" : "حفظ تلقائي"}
           </span>
           <button className="btn btn-secondary" onClick={onClose}>إغلاق</button>
         </div>

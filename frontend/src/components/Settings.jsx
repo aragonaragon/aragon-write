@@ -143,7 +143,51 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
                   <div className="theme-swatch dark" />
                   داكن
                 </button>
+                <button
+                  className={`theme-option${settings.theme === "sepia" ? " active" : ""}`}
+                  onClick={() => onUpdate({ theme: "sepia" })}
+                >
+                  <div className="theme-swatch sepia" />
+                  عاجي
+                </button>
               </div>
+            </div>
+          </div>
+
+          {/* Writing */}
+          <div className="settings-section">
+            <div className="settings-section__title">الكتابة</div>
+
+            <div className="settings-field">
+              <label>هدف الكتابة اليومي (كلمة)</label>
+              <input
+                type="number"
+                className="settings-input"
+                value={settings.writingGoal || ""}
+                onChange={(e) => onUpdate({ writingGoal: parseInt(e.target.value) || 0 })}
+                placeholder="0 = بدون هدف"
+                min="0"
+                max="50000"
+                style={{ textAlign: "right", direction: "rtl" }}
+              />
+              <span className="settings-field__hint">
+                يظهر شريط التقدم في أسفل الشاشة عند تحديد هدف.
+              </span>
+            </div>
+
+            <div className="settings-field">
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={settings.typewriterMode || false}
+                  onChange={(e) => onUpdate({ typewriterMode: e.target.checked })}
+                  style={{ width: 16, height: 16 }}
+                />
+                وضع الآلة الكاتبة
+              </label>
+              <span className="settings-field__hint">
+                يُثبّت المؤشر في منتصف الشاشة أثناء الكتابة — أريح للجلسات الطويلة.
+              </span>
             </div>
           </div>
 
