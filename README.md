@@ -1,245 +1,135 @@
-# ✍️ Aragon Write — محرر الكتابة العربي الذكي
+<div align="center">
 
-تطبيق desktop محلي لكتابة الروايات والمحتوى العربي، مدعوم بذكاء اصطناعي محلي عبر Ollama.
+# ✍️ أرغون رايت
 
-**100% محلي · بدون إنترنت · بدون اشتراك · Windows**
+### محرر الكتابة العربي الذكي
 
----
+**اكتب روايتك أو محتواك — محلي 100%، بدون إنترنت، بدون اشتراك**
 
-## جدول المحتويات
+[![Download](https://img.shields.io/github/v/release/aragonaragon/aragon-write?label=تحميل&style=for-the-badge&color=c8956c)](https://github.com/aragonaragon/aragon-write/releases/latest)
+[![Platform](https://img.shields.io/badge/Windows-x64-blue?style=for-the-badge&logo=windows)](https://github.com/aragonaragon/aragon-write/releases/latest)
+[![License](https://img.shields.io/badge/مجاني-100%25-green?style=for-the-badge)](https://github.com/aragonaragon/aragon-write/releases/latest)
 
-- [للمستخدم: التشغيل السريع](#للمستخدم-التشغيل-السريع)
-- [للمطور: التشغيل للتطوير](#للمطور-التشغيل-للتطوير)
-- [بنية المشروع](#بنية-المشروع)
-- [الـ API](#الـ-api)
-- [البناء والتوزيع](#البناء-والتوزيع)
-- [المميزات](#المميزات)
-- [ملاحظات مهمة — اقرأها قبل تعديل أي شيء](#ملاحظات-مهمة)
+</div>
 
 ---
 
-## للمستخدم: التشغيل السريع
+## 🚀 تحميل وتشغيل
 
-1. فك ضغط `Aragon-Write-portable.zip`
-2. دبل كليك على `Aragon Write.exe`
-3. خلاص — لا يحتاج Node.js أو أي تثبيت
+<div align="center">
 
-> للذكاء الاصطناعي: ثبّت [Ollama](https://ollama.com/download) وشغّل `ollama pull qwen2.5:7b`
+### [⬇️ تحميل أرغون رايت — Windows](https://github.com/aragonaragon/aragon-write/releases/latest)
 
----
+</div>
 
-## للمطور: التشغيل للتطوير
+1. حمّل `Aragon-Write-portable.zip`
+2. فك الضغط في أي مكان
+3. دبل كليك على `Aragon Write.exe`
 
-**المتطلبات:** Node.js 20+ · npm 10+
-
-```bash
-# تثبيت الحزم
-npm install
-
-# تشغيل dev (browser على localhost:5173)
-npm run dev
-
-# أو كـ Electron window
-npm run electron:dev
-```
+> لا يحتاج تثبيت · لا يحتاج Node.js · لا يحتاج إنترنت
 
 ---
 
-## بنية المشروع
-
-```
-aragon write/
-│
-├── frontend/                        # React 18 + Vite 5 + TipTap 2
-│   ├── src/
-│   │   ├── App.jsx                  # ← نقطة البداية، كل الـ state هنا
-│   │   ├── styles.css               # كل الـ CSS في ملف واحد (variables + themes)
-│   │   ├── components/
-│   │   │   ├── AIPanel.jsx          # لوحة الذكاء الاصطناعي (streaming SSE)
-│   │   │   ├── DocumentManager.jsx  # قائمة المستندات + حفظ/تصدير
-│   │   │   ├── ProjectManager.jsx   # شبكة المشاريع (modal)
-│   │   │   ├── OutlineSidebar.jsx   # فهرس العناوين التلقائي
-│   │   │   ├── Settings.jsx         # إعدادات Ollama + مظهر + كتابة
-│   │   │   ├── StatusBar.jsx        # شريط الحالة (كلمات، هدف، جلسة)
-│   │   │   └── Toolbar.jsx          # شريط تنسيق النص
-│   │   └── extensions/
-│   │       └── spellcheck.js        # TipTap extension للتدقيق الإملائي
-│   └── vite.config.js               # ⚠️ base: "./" — لا تحذفه (مهم لـ Electron)
-│
-├── backend/                         # Node.js 20 + Express 4
-│   └── src/
-│       └── server.js                # كل الـ API في ملف واحد (ES Modules)
-│
-├── electron/
-│   ├── main.cjs                     # Electron main process (CommonJS)
-│   └── splash.html                  # شاشة التحميل (HTML순수)
-│
-├── assets/                          # أيقونات (أضف icon.ico هنا للـ packaging)
-├── build.bat                        # بناء + zip بضغطة واحدة
-├── launch.bat                       # تشغيل النسخة المحزومة
-└── package.json                     # npm workspaces root
-```
-
----
-
-## الـ API
-
-**Base URL (dev + prod):** `http://localhost:3001`
-
-### الصحة والموديلات
-| Method | Path | الوصف |
-|--------|------|-------|
-| GET | `/health` | فحص حالة الـ backend |
-| GET | `/models` | قائمة موديلات Ollama المتاحة |
-
-### الذكاء الاصطناعي
-| Method | Path | الوصف |
-|--------|------|-------|
-| POST | `/ai/action` | تنفيذ إجراء AI (استجابة كاملة) |
-| POST | `/ai/stream` | تنفيذ إجراء AI مع streaming (SSE) |
-| POST | `/check-word` | تدقيق إملائي لكلمة واحدة |
-
-**الإجراءات المتاحة (`action` field):**
-| الإجراء | الوصف |
-|---------|-------|
-| `rewrite` | إعادة صياغة |
-| `improve` | تحسين الأسلوب |
-| `shorter` | تقصير |
-| `longer` | إطالة |
-| `continue` | الاستكمال |
-| `translate_en` | ترجمة للإنجليزية |
-| `translate_ar` | ترجمة للعربية |
-| `fix_grammar` | تصحيح إملائي/نحوي |
-| `ideas` | اقتراح أفكار |
-| `outline` | مخطط تفصيلي |
-| `titles` | اقتراح عناوين |
-| `chat` | محادثة مع المستند |
-
-**مثال request:**
-```json
-POST /ai/stream
-{
-  "text": "النص المراد تحسينه",
-  "action": "improve",
-  "model": "qwen2.5:7b"
-}
-```
-
-### التحكم في Ollama
-| Method | Path | الوصف |
-|--------|------|-------|
-| POST | `/ollama/start` | يشغّل `ollama serve` |
-| POST | `/ollama/kill` | يوقف `ollama.exe` (Windows) |
-
-### المشاريع والمستندات
-| Method | Path | الوصف |
-|--------|------|-------|
-| GET | `/fs/projects` | كل المشاريع |
-| POST | `/fs/projects` | إنشاء مشروع |
-| PUT | `/fs/projects/:id` | تعديل اسم/gradient |
-| DELETE | `/fs/projects/:id` | حذف مشروع كامل |
-| GET | `/fs/projects/:id/docs` | مستندات المشروع |
-| POST | `/fs/projects/:id/docs` | إنشاء مستند |
-| PUT | `/fs/projects/:id/docs/:docId` | حفظ مستند |
-| DELETE | `/fs/projects/:id/docs/:docId` | حذف مستند |
-
-**مكان الحفظ على القرص:** `~/Documents/AragonWrite/<project-id>/`
-
-كل مشروع = مجلد يحتوي:
-- `_project.json` — metadata (id, title, gradient, updatedAt)
-- `<docId>.json` — محتوى كل مستند (TipTap JSON)
-
----
-
-## البناء والتوزيع
-
-### بناء portable app
-```bash
-# دبل كليك على build.bat
-# أو:
-npm run dist
-```
-
-الناتج في `app-release/Aragon Write-win32-x64/` + ZIP جاهز.
-
-### ما يحدث خطوة بخطوة
-```
-npm run build        → Vite يبني frontend/dist/
-npm run build:backend → esbuild يحزم server.js → backend/dist/server.cjs (1.2MB)
-electron-packager    → يجمع كل شيء في Aragon Write.exe (≈212MB)
-```
-
-### كيف يعمل الـ backend في الـ exe
-في وضع الإنتاج (`app.isPackaged = true`)، الـ backend يشتغل عبر:
-```javascript
-utilityProcess.fork(path.join(process.resourcesPath, "server.cjs"))
-```
-هذا يشغّل `server.cjs` كـ subprocess مستقل داخل Electron's Node.js — **بدون حاجة لـ Node.js مثبت على الجهاز**.
-
----
-
-## المميزات
+## ✨ المميزات
 
 | الميزة | التفاصيل |
 |--------|---------|
-| محرر نصوص | TipTap WYSIWYG كامل، RTL |
-| مشاريع | كل مشروع مجلد JSON مستقل |
-| ثيمات | فاتح / داكن / عاجي (sepia) |
-| Focus Mode | F11 — يخفي كل شيء إلا النص |
-| Typewriter Mode | يثبّت المؤشر في 40% من الشاشة |
-| هدف يومي | شريط تقدم في الأسفل |
-| عداد الجلسة | كلمات كتبتها في هذه الجلسة |
-| AI Panel | 12 إجراء + chat مع المستند |
-| Streaming | النص يظهر حرفاً بحرف |
-| تدقيق إملائي | عبر Ollama، يعمل أثناء الكتابة |
-| Kill/Start Ollama | من داخل الإعدادات |
+| 🤖 **AI محلي** | مدعوم بـ Ollama — يعمل بدون إنترنت وبدون اشتراك |
+| 📚 **مكتبة مشاريع** | مجلد مستقل لكل رواية محفوظ على قرصك |
+| ✍️ **محرر WYSIWYG** | تنسيق كامل مع دعم RTL العربي |
+| 🎯 **Focus Mode** | F11 — يخفي كل شيء إلا النص |
+| ⌨️ **Typewriter Mode** | يثبّت المؤشر في المنتصف |
+| 🌙 **3 ثيمات** | فاتح / داكن / عاجي |
+| 🎯 **هدف يومي** | شريط تقدم للكلمات |
+| 🔒 **خصوصية تامة** | لا سحابة، لا تسجيل، لا إنترنت |
 
 ---
 
-## ملاحظات مهمة
+## 🤖 الذكاء الاصطناعي
 
-### ⚠️ 1. `base: "./"` في vite.config.js
-**لا تحذفه أبداً.** بدونه assets تُحمّل بمسارات مطلقة (`/assets/...`) وتفشل في `file://` protocol داخل Electron — الصفحة تبقى بيضاء.
-
-### ⚠️ 2. `utilityProcess.fork()` في electron/main.cjs
-يشغّل الـ backend كـ subprocess. **لا تستبدله بـ `require()`** — يسبب hang في splash screen لأن `require()` يشغّل الكود في نفس process الـ Electron ويتعارض مع بيئته.
-
-### ⚠️ 3. اسم مجلد التخزين
-`~/Documents/AragonWrite` (camelCase، بدون مسافة). إذا غيّرت الاسم، عدّل `STORAGE_ROOT` في `backend/src/server.js` وانقل بيانات المستخدمين.
-
-### ⚠️ 4. ES Modules في الـ backend
-`server.js` يستخدم `import/export`. esbuild يحوّله لـ CJS عند البناء. لا تستخدم `require()` داخل `server.js`.
-
-### 5. الخطوط من Google Fonts
-تُحمّل من الإنترنت. في بيئة offline يظهر الـ fallback `Segoe UI/Arial`. للعمل offline الكامل: حمّل Cairo و Amiri محلياً في `frontend/public/fonts/`.
-
----
-
-## Stack
-
-```
-Frontend:   React 18 · TipTap 2 · Vite 5 · Lucide Icons
-Backend:    Node.js 20 · Express 4
-Bundler:    esbuild (backend) · Rollup via Vite (frontend)
-Desktop:    Electron 41 (Chromium 130 + Node 20)
-AI:         Ollama local — qwen2.5:7b / llama3.1 / gemma2
-Storage:    JSON files على القرص — لا database
-Platform:   Windows x64
-```
-
----
-
-## Scripts المرجعية
+التطبيق يتكامل مع **Ollama** لتشغيل موديلات AI محلية:
 
 ```bash
-npm run dev            # تشغيل للتطوير (browser)
-npm run electron:dev   # تشغيل للتطوير (Electron window)
-npm run build          # بناء frontend فقط → frontend/dist/
-npm run build:backend  # بناء backend فقط → backend/dist/server.cjs
-npm run electron       # build + تشغيل Electron (prod mode)
-npm run dist           # build كامل + packaging → app-release/
+# 1. ثبّت Ollama من ollama.com
+# 2. حمّل موديل عربي
+ollama pull qwen2.5:7b
 ```
+
+**الإجراءات المتاحة:** إعادة صياغة · تحسين · تقصير · إطالة · استكمال · ترجمة · تصحيح إملائي · اقتراح أفكار · مخطط · عناوين · محادثة مع المستند
 
 ---
 
-*v2.2.0 — آخر تحديث أبريل 2026*
+## 📸 لقطات الشاشة
+
+*قريباً*
+
+---
+
+## 🛠️ للمطورين
+
+<details>
+<summary>تشغيل للتطوير</summary>
+
+**المتطلبات:** Node.js 20+
+
+```bash
+npm install
+npm run dev          # browser على localhost:5173
+npm run electron:dev # Electron window
+npm run dist         # بناء portable .exe
+```
+
+**Stack:**
+```
+Frontend:  React 18 · TipTap 2 · Vite 5
+Backend:   Node.js · Express 4 · esbuild
+Desktop:   Electron 41
+AI:        Ollama (local LLM)
+Storage:   JSON files — ~/Documents/AragonWrite/
+```
+
+</details>
+
+<details>
+<summary>بنية المشروع</summary>
+
+```
+aragon write/
+├── frontend/src/
+│   ├── App.jsx              # State + Layout
+│   ├── components/
+│   │   ├── AIPanel.jsx      # AI streaming panel
+│   │   ├── DocumentManager.jsx
+│   │   ├── ProjectManager.jsx
+│   │   ├── Settings.jsx
+│   │   └── StatusBar.jsx
+│   └── extensions/spellcheck.js
+├── backend/src/server.js    # Express API + Ollama proxy
+├── electron/main.cjs        # Electron main process
+└── electron/splash.html     # Loading screen
+```
+
+</details>
+
+<details>
+<summary>API Reference</summary>
+
+`GET /health` · `GET /models` · `POST /ai/action` · `POST /ai/stream` · `POST /check-word`
+
+`POST /ollama/start` · `POST /ollama/kill`
+
+`GET|POST|PUT|DELETE /fs/projects`
+
+`GET|POST|PUT|DELETE /fs/projects/:id/docs/:docId`
+
+</details>
+
+---
+
+<div align="center">
+
+**مبني بـ React · TipTap · Electron · Ollama**
+
+⭐ إذا أعجبك المشروع اعطه نجمة
+
+</div>
