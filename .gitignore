@@ -27,3 +27,7 @@ Thumbs.db
 
 # Claude Code settings
 .claude/
+
+# Electron build output
+electron-dist/
+out/

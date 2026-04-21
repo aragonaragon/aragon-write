@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { X, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { X, RefreshCw, CheckCircle, AlertCircle, Power, Play } from "lucide-react";
 
-export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
+export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllamaStatusChange }) {
   const [models, setModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState(null);
   const [ollamaUrl, setOllamaUrl] = useState(settings.ollamaUrl);
   const [testStatus, setTestStatus] = useState(null);
+  const [ollamaAction, setOllamaAction] = useState(null); // "killing" | "starting" | null
 
-  const fetchModels = async (url = ollamaUrl) => {
+  const fetchModels = async () => {
     setLoadingModels(true);
     setModelError(null);
     try {
@@ -30,13 +31,36 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
     }
   };
 
-  useEffect(() => {
-    fetchModels();
-  }, []); // eslint-disable-line
+  useEffect(() => { fetchModels(); }, []); // eslint-disable-line
 
   const saveOllamaUrl = () => {
     onUpdate({ ollamaUrl });
-    fetchModels(ollamaUrl);
+    fetchModels();
+  };
+
+  const killOllama = async () => {
+    setOllamaAction("killing");
+    try {
+      await fetch(`${apiUrl}/ollama/kill`, { method: "POST" });
+      setTestStatus(null);
+      setModels([]);
+      onOllamaStatusChange?.("error");
+    } finally {
+      setOllamaAction(null);
+    }
+  };
+
+  const startOllama = async () => {
+    setOllamaAction("starting");
+    try {
+      await fetch(`${apiUrl}/ollama/start`, { method: "POST" });
+      setTimeout(() => {
+        fetchModels();
+        onOllamaStatusChange?.("online");
+      }, 3000);
+    } finally {
+      setTimeout(() => setOllamaAction(null), 3200);
+    }
   };
 
   return (
@@ -48,7 +72,8 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
         </div>
 
         <div className="modal__body">
-          {/* Ollama Settings */}
+
+          {/* ── Ollama ── */}
           <div className="settings-section">
             <div className="settings-section__title">إعدادات Ollama (الذكاء الاصطناعي)</div>
 
@@ -65,48 +90,31 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
                   حفظ
                 </button>
               </div>
-              <span className="settings-field__hint">
-                العنوان الافتراضي: http://localhost:11434
-              </span>
+              <span className="settings-field__hint">العنوان الافتراضي: http://localhost:11434</span>
             </div>
 
             <div className="settings-field">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <label>الموديل النشط</label>
-                <button
-                  className="btn-icon"
-                  onClick={() => fetchModels()}
-                  title="تحديث قائمة الموديلات"
-                  disabled={loadingModels}
-                >
+                <button className="btn-icon" onClick={fetchModels} title="تحديث" disabled={loadingModels}>
                   <RefreshCw size={14} style={{ animation: loadingModels ? "spin 1s linear infinite" : "none" }} />
                 </button>
               </div>
 
               {testStatus === "success" && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#34a853", fontSize: 13, marginBottom: 8 }}>
-                  <CheckCircle size={14} />
-                  Ollama يعمل — {models.length} موديل متاح
+                  <CheckCircle size={14} />Ollama يعمل — {models.length} موديل متاح
                 </div>
               )}
               {testStatus === "error" && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ea4335", fontSize: 13, marginBottom: 8 }}>
-                  <AlertCircle size={14} />
-                  {modelError}
+                  <AlertCircle size={14} />{modelError}
                 </div>
               )}
 
               {models.length > 0 ? (
-                <select
-                  className="settings-select"
-                  value={settings.model}
-                  onChange={(e) => onUpdate({ model: e.target.value })}
-                >
-                  {models.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
+                <select className="settings-select" value={settings.model} onChange={(e) => onUpdate({ model: e.target.value })}>
+                  {models.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
                 </select>
               ) : (
                 <input
@@ -120,41 +128,56 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
                 الموديلات الموصى بها للعربية: qwen2.5:7b، Llama 3.1، Gemma2
               </span>
             </div>
+
+            {/* Kill / Start Ollama */}
+            <div className="settings-field">
+              <label>تشغيل / إيقاف Ollama</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={startOllama}
+                  disabled={!!ollamaAction}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                >
+                  <Play size={13} style={{ color: "#34a853" }} />
+                  {ollamaAction === "starting" ? "جاري التشغيل..." : "تشغيل Ollama"}
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={killOllama}
+                  disabled={!!ollamaAction}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                >
+                  <Power size={13} />
+                  {ollamaAction === "killing" ? "جاري الإيقاف..." : "إيقاف Ollama"}
+                </button>
+              </div>
+              <span className="settings-field__hint">
+                إيقاف Ollama يحرر الذاكرة (RAM) تماماً. شغّله مجدداً عند الحاجة للـ AI.
+              </span>
+            </div>
           </div>
 
-          {/* Appearance */}
+          {/* ── المظهر ── */}
           <div className="settings-section">
             <div className="settings-section__title">المظهر</div>
-
             <div className="settings-field">
               <label>وضع العرض</label>
               <div className="theme-options">
-                <button
-                  className={`theme-option${settings.theme === "light" ? " active" : ""}`}
-                  onClick={() => onUpdate({ theme: "light" })}
-                >
-                  <div className="theme-swatch light" />
-                  فاتح
+                <button className={`theme-option${settings.theme === "light" ? " active" : ""}`} onClick={() => onUpdate({ theme: "light" })}>
+                  <div className="theme-swatch light" />فاتح
                 </button>
-                <button
-                  className={`theme-option${settings.theme === "dark" ? " active" : ""}`}
-                  onClick={() => onUpdate({ theme: "dark" })}
-                >
-                  <div className="theme-swatch dark" />
-                  داكن
+                <button className={`theme-option${settings.theme === "dark" ? " active" : ""}`} onClick={() => onUpdate({ theme: "dark" })}>
+                  <div className="theme-swatch dark" />داكن
                 </button>
-                <button
-                  className={`theme-option${settings.theme === "sepia" ? " active" : ""}`}
-                  onClick={() => onUpdate({ theme: "sepia" })}
-                >
-                  <div className="theme-swatch sepia" />
-                  عاجي
+                <button className={`theme-option${settings.theme === "sepia" ? " active" : ""}`} onClick={() => onUpdate({ theme: "sepia" })}>
+                  <div className="theme-swatch sepia" />عاجي
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Writing */}
+          {/* ── الكتابة ── */}
           <div className="settings-section">
             <div className="settings-section__title">الكتابة</div>
 
@@ -170,9 +193,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
                 max="50000"
                 style={{ textAlign: "right", direction: "rtl" }}
               />
-              <span className="settings-field__hint">
-                يظهر شريط التقدم في أسفل الشاشة عند تحديد هدف.
-              </span>
+              <span className="settings-field__hint">يظهر شريط التقدم في أسفل الشاشة عند تحديد هدف.</span>
             </div>
 
             <div className="settings-field">
@@ -185,13 +206,11 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
                 />
                 وضع الآلة الكاتبة
               </label>
-              <span className="settings-field__hint">
-                يُثبّت المؤشر في منتصف الشاشة أثناء الكتابة — أريح للجلسات الطويلة.
-              </span>
+              <span className="settings-field__hint">يُثبّت المؤشر في منتصف الشاشة أثناء الكتابة.</span>
             </div>
           </div>
 
-          {/* Spellcheck */}
+          {/* ── التدقيق الإملائي ── */}
           <div className="settings-section">
             <div className="settings-section__title">التدقيق الإملائي</div>
             <div className="settings-field">
@@ -210,12 +229,12 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl }) {
             </div>
           </div>
 
-          {/* About */}
+          {/* ── عن التطبيق ── */}
           <div className="settings-section">
             <div className="settings-section__title">عن التطبيق</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 2 }}>
               <div>🔒 محلي 100% — بدون إنترنت، بدون سحابة، بدون تسجيل</div>
-              <div>💾 الملفات محفوظة في متصفحك (localStorage)</div>
+              <div>💾 الروايات محفوظة في مجلد على قرصك الصلب</div>
               <div>🤖 يتكامل مع Ollama لتشغيل موديلات AI محلية</div>
               <div>📝 محرر نصوص WYSIWYG مع دعم كامل للعربية RTL</div>
             </div>

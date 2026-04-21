@@ -1,8 +1,12 @@
 import { promises as fsp } from "fs";
+import { exec as execCb } from "child_process";
+import { promisify } from "util";
 import path from "path";
 import os from "os";
 import cors from "cors";
 import express from "express";
+
+const exec = promisify(execCb);
 
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
@@ -193,6 +197,37 @@ app.post("/check-word", async (req, res) => {
     wordCache.set(word, result);
     return res.json(result);
   } catch { return res.json({ correct: true }); }
+});
+
+// ─── Ollama control ───────────────────────────────────────────────────────────
+
+// POST /ollama/kill — stop the Ollama process
+app.post("/ollama/kill", async (_req, res) => {
+  try {
+    const cmd =
+      process.platform === "win32"
+        ? "taskkill /F /IM ollama.exe"
+        : "pkill -f ollama";
+    await exec(cmd);
+    res.json({ ok: true });
+  } catch (err) {
+    // Process may already be stopped — treat as success
+    res.json({ ok: true, note: err.message });
+  }
+});
+
+// POST /ollama/start — launch Ollama serve (Windows / mac / linux)
+app.post("/ollama/start", async (_req, res) => {
+  try {
+    const cmd =
+      process.platform === "win32"
+        ? "start /B ollama serve"
+        : "ollama serve &";
+    exec(cmd); // fire-and-forget
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── File-system Project Routes ───────────────────────────────────────────────

@@ -637,7 +637,13 @@ export default function App() {
       )}
 
       {isSettingsOpen && (
-        <Settings settings={settings} onUpdate={updateSettings} onClose={() => setIsSettingsOpen(false)} apiUrl={API_URL} />
+        <Settings
+          settings={settings}
+          onUpdate={updateSettings}
+          onClose={() => setIsSettingsOpen(false)}
+          apiUrl={API_URL}
+          onOllamaStatusChange={setOllamaStatus}
+        />
       )}
     </div>
   );

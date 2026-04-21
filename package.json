@@ -1,7 +1,8 @@
 {
   "name": "arabic-novel-writer",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.1.0",
+  "main": "electron/main.cjs",
   "workspaces": [
     "frontend",
     "backend"
@@ -10,9 +11,12 @@
     "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:backend": "npm run dev --workspace backend",
-    "build": "npm run build --workspace frontend"
+    "build": "npm run build --workspace frontend",
+    "electron": "npm run build && electron .",
+    "electron:dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\" \"electron . --dev\""
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "electron": "^41.2.1"
   }
 }
