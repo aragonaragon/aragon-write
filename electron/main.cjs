@@ -1,94 +1,121 @@
 /**
  * Aragon Write — Electron main process
- * Dev mode:  npm run dev (in separate terminal) → npm run electron:dev
- * Prod mode: npm run electron  (builds frontend then launches)
+ *
+ * Dev:  npm run electron:dev
+ * Prod: npm run electron          (build + run)
+ * Dist: npm run dist              (build installer .exe)
  */
 
 const { app, BrowserWindow, shell } = require("electron");
-const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
 
-// Dev mode when launched with --dev flag or NODE_ENV=development
-const isDev =
-  process.argv.includes("--dev") || process.env.NODE_ENV === "development";
-
+// In packaged app, app.isPackaged is true
+const isDev = !app.isPackaged;
 const ROOT = path.join(__dirname, "..");
+
 let mainWindow = null;
+let splashWindow = null;
 let backendProcess = null;
 
-// ─── Backend spawner ──────────────────────────────────────────────────────────
-function startBackend() {
-  const serverEntry = path.join(ROOT, "backend", "src", "server.js");
-  backendProcess = spawn("node", [serverEntry], {
-    cwd: ROOT,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PORT: "3001" },
+// ─── Splash Screen ────────────────────────────────────────────────────────────
+function createSplash() {
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 280,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
-  backendProcess.stdout?.on("data", (d) =>
-    process.stdout.write(`[backend] ${d}`)
-  );
-  backendProcess.stderr?.on("data", (d) =>
-    process.stderr.write(`[backend] ${d}`)
-  );
-  backendProcess.on("exit", (code) =>
-    console.log(`[backend] stopped (code ${code})`)
-  );
-  return backendProcess;
+  splashWindow.loadFile(path.join(__dirname, "splash.html"));
+  splashWindow.once("ready-to-show", () => splashWindow.show());
 }
 
-// Poll until backend is ready (or give up after ~10 s)
-function waitForBackend(retries = 25) {
+// ─── Backend ──────────────────────────────────────────────────────────────────
+function startBackend() {
+  if (app.isPackaged) {
+    // Packaged: load bundled Express server directly in main process
+    const serverPath = path.join(process.resourcesPath, "server.cjs");
+    process.env.PORT = "3001";
+    try {
+      require(serverPath);
+      console.log("[backend] loaded from", serverPath);
+    } catch (e) {
+      console.error("[backend] failed to load:", e);
+    }
+  } else {
+    // Dev: spawn a separate Node process (hot-reloadable)
+    const { spawn } = require("child_process");
+    const serverEntry = path.join(ROOT, "backend", "src", "server.js");
+    backendProcess = spawn("node", [serverEntry], {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PORT: "3001" },
+    });
+    backendProcess.stdout?.on("data", (d) => process.stdout.write(`[backend] ${d}`));
+    backendProcess.stderr?.on("data", (d) => process.stderr.write(`[backend] ${d}`));
+    backendProcess.on("exit", (c) => console.log(`[backend] exited (code ${c})`));
+  }
+}
+
+// Poll /health until backend is ready (max ~12 s)
+function waitForBackend(retries = 40) {
   return new Promise((resolve) => {
     const try_ = (n) => {
       http
         .get("http://localhost:3001/health", () => resolve(true))
         .on("error", () => {
           if (n <= 0) return resolve(false);
-          setTimeout(() => try_(n - 1), 400);
+          setTimeout(() => try_(n - 1), 300);
         });
     };
     try_(retries);
   });
 }
 
-// ─── Window ───────────────────────────────────────────────────────────────────
+// ─── Main Window ──────────────────────────────────────────────────────────────
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1000,
     minHeight: 660,
-    backgroundColor: "#f0f4f9",
-    title: "Aragon Write ✍",
+    backgroundColor: "#fdf8f0",
+    title: "Aragon Write",
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    show: false,
   });
 
-  // Remove default menu bar
   mainWindow.setMenuBarVisibility(false);
 
   if (isDev) {
-    // Dev: load Vite dev server (must be running already)
-    await mainWindow.loadURL("http://localhost:5173").catch(() => {
-      mainWindow.loadURL("about:blank");
-    });
+    await mainWindow.loadURL("http://localhost:5173").catch(() =>
+      mainWindow.loadURL("about:blank")
+    );
   } else {
-    // Production: load built frontend
     await mainWindow.loadFile(
       path.join(ROOT, "frontend", "dist", "index.html")
     );
   }
 
   mainWindow.once("ready-to-show", () => {
+    // Close splash then reveal main window
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.destroy();
+      splashWindow = null;
+    }
     mainWindow.show();
     mainWindow.focus();
   });
 
-  // Open external links in real browser, not Electron window
+  // External links open in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
@@ -99,18 +126,15 @@ async function createWindow() {
   });
 }
 
-// ─── App lifecycle ────────────────────────────────────────────────────────────
+// ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
-  if (!isDev) {
-    // Production: start backend, wait for it, then show window
-    startBackend();
-    await waitForBackend();
-  }
+  createSplash();
+  startBackend();
+  await waitForBackend();
   await createWindow();
 });
 
 app.on("window-all-closed", () => {
-  // Kill the backend we spawned
   if (backendProcess) {
     backendProcess.kill();
     backendProcess = null;

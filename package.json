@@ -1,7 +1,7 @@
 {
-  "name": "arabic-novel-writer",
+  "name": "aragon-write",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "main": "electron/main.cjs",
   "workspaces": [
     "frontend",
@@ -12,11 +12,15 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:backend": "npm run dev --workspace backend",
     "build": "npm run build --workspace frontend",
+    "build:backend": "esbuild backend/src/server.js --bundle --platform=node --format=cjs --outfile=backend/dist/server.cjs",
     "electron": "npm run build && electron .",
-    "electron:dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\" \"electron . --dev\""
+    "electron:dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\" \"electron . --dev\"",
+    "dist": "npm run build && npm run build:backend && electron-packager . \"Aragon Write\" --platform=win32 --arch=x64 --out=app-release --overwrite --extra-resource=backend/dist/server.cjs \"--ignore=(node_modules|\\.git|dist-installer|app-release|backend/src|backend/node_modules|frontend/node_modules)\" --prune=true"
   },
   "devDependencies": {
+    "@electron/packager": "^19.1.0",
     "concurrently": "^9.1.2",
-    "electron": "^41.2.1"
+    "electron": "^41.2.1",
+    "esbuild": "^0.28.0"
   }
 }

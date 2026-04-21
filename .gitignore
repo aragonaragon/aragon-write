@@ -30,7 +30,10 @@ Thumbs.db
 
 # Electron build output
 electron-dist/
+dist-installer/
+app-release/
 out/
+backend/dist/
 
 # Project data (stored in ~/Documents/AragonWrite, not in repo)
 [a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9][a-z0-9]/
