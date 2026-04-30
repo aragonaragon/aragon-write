@@ -1,6 +1,6 @@
-import { FileText, Cpu, AlertCircle, Target } from "lucide-react";
+import { FileText, Cpu, AlertCircle, Target, Play, Power } from "lucide-react";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction }) {
   const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
   const goalReached = writingGoal > 0 && stats.words >= writingGoal;
 
@@ -46,13 +46,35 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
 
       <div className="statusbar__spacer" />
 
-      <div className="statusbar__item">
+      <div className="statusbar__item" style={{ gap: 6 }}>
         <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
         <span>
           {ollamaStatus === "online" ? "Ollama متصل" :
-           ollamaStatus === "error" ? "Ollama غير متاح" :
+           ollamaStatus === "error" ? "Ollama متوقف" :
            "جاري الفحص..."}
         </span>
+        {ollamaStatus !== "online" && (
+          <button
+            className="btn-icon"
+            onClick={onStartOllama}
+            disabled={ollamaAction === "starting"}
+            title="تشغيل Ollama"
+            style={{ width: 20, height: 20, color: "#34a853" }}
+          >
+            <Play size={11} />
+          </button>
+        )}
+        {ollamaStatus === "online" && (
+          <button
+            className="btn-icon"
+            onClick={onKillOllama}
+            disabled={ollamaAction === "killing"}
+            title="إيقاف Ollama"
+            style={{ width: 20, height: 20, color: "#ea4335" }}
+          >
+            <Power size={11} />
+          </button>
+        )}
       </div>
 
       <div className="statusbar__item">

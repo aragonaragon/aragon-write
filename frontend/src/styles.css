@@ -1511,6 +1511,105 @@ button, input, textarea, select {
   background: #34a853;
 }
 
+/* ─── Toast ─────────────────────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  color: var(--text);
+  min-width: 240px;
+  max-width: 360px;
+  animation: toastIn 250ms ease;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.toast--error   { border-right: 3px solid #ea4335; }
+.toast--success { border-right: 3px solid #34a853; }
+.toast--info    { border-right: 3px solid var(--primary); }
+
+.toast__icon { flex-shrink: 0; }
+.toast--error .toast__icon { color: #ea4335; }
+.toast--success .toast__icon { color: #34a853; }
+
+.toast__message { flex: 1; line-height: 1.4; }
+
+.toast__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.toast__close:hover { color: var(--text); }
+
+/* ─── Error Boundary ────────────────────────────────────────────────────────── */
+.error-boundary {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 24px;
+}
+
+.error-boundary__box {
+  text-align: center;
+  max-width: 480px;
+}
+
+.error-boundary__box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.error-boundary__box p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.error-boundary__detail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  overflow-wrap: break-word;
+  text-align: right;
+  direction: rtl;
+}
+
 /* ─── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .outline-sidebar { display: none; }

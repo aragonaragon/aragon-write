@@ -1,8 +1,10 @@
+import { useState, useRef, useEffect } from "react";
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Quote, Code, Minus,
   Undo2, Redo2, Link, Highlighter, RemoveFormatting,
+  Type, ChevronDown, X
 } from "lucide-react";
 
 const FONTS = [
@@ -14,7 +16,7 @@ const FONTS = [
   { value: "Times New Roman, serif", label: "Times New Roman" },
 ];
 
-const SIZES = ["10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36", "48", "64", "96"];
+const SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
 
 const HEADINGS = [
   { label: "نص عادي", level: 0 },
@@ -22,11 +24,21 @@ const HEADINGS = [
   { label: "عنوان 2", level: 2 },
   { label: "عنوان 3", level: 3 },
   { label: "عنوان 4", level: 4 },
-  { label: "عنوان 5", level: 5 },
-  { label: "عنوان 6", level: 6 },
 ];
 
-function TBtn({ title, isActive, onClick, disabled, children }) {
+const TEXT_COLORS = [
+  "#000000", "#434343", "#666666", "#999999",
+  "#b45f06", "#ff9900", "#38761d", "#0b5394",
+  "#351c75", "#741b47", "#c00", "#e06666",
+];
+
+const BG_COLORS = [
+  "#ffffff", "#cccccc", "#ffff00", "#ff9900",
+  "#00ff00", "#00ffff", "#9900ff", "#ff00ff",
+  "#ff0000", "#fce5cd", "#d9ead3", "#c9daf8",
+];
+
+function TBtn({ title, isActive, onClick, disabled, children, style }) {
   return (
     <button
       className={`toolbar-btn${isActive ? " is-active" : ""}`}
@@ -35,62 +47,148 @@ function TBtn({ title, isActive, onClick, disabled, children }) {
       disabled={disabled}
       type="button"
       tabIndex={-1}
+      style={style}
     >
       {children}
     </button>
   );
 }
 
+function Dropdown({ trigger, children, open, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open, onClose]);
+  if (!open) return trigger;
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      {trigger}
+      <div
+        className="toolbar-dropdown"
+        style={{
+          position: "absolute",
+          top: "calc(100% + 4px)",
+          right: 0,
+          zIndex: 100,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-md)",
+          boxShadow: "var(--shadow-lg)",
+          padding: 6,
+          minWidth: 140,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ColorPalette({ colors, onSelect, onClear, activeColor }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, padding: 4 }}>
+      {colors.map((c) => (
+        <button
+          key={c}
+          onClick={() => onSelect(c)}
+          title={c}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "var(--radius-sm)",
+            background: c,
+            border: activeColor === c ? "2px solid var(--primary)" : "1px solid var(--border)",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        />
+      ))}
+      {onClear && (
+        <button
+          onClick={onClear}
+          title="بدون لون"
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: "var(--radius-sm)",
+            background: "transparent",
+            border: "1px dashed var(--border)",
+            cursor: "pointer",
+            padding: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <X size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Toolbar({ editor }) {
   if (!editor) return null;
 
+  const [sizeOpen, setSizeOpen] = useState(false);
+  const [textColorOpen, setTextColorOpen] = useState(false);
+  const [bgColorOpen, setBgColorOpen] = useState(false);
+
   const getCurrentHeadingLabel = () => {
     for (let i = 1; i <= 6; i++) {
-      if (editor.isActive("heading", { level: i })) {
-        return `عنوان ${i}`;
-      }
+      if (editor.isActive("heading", { level: i })) return `عنوان ${i}`;
     }
     return "نص عادي";
   };
 
   const handleHeadingChange = (e) => {
     const level = parseInt(e.target.value, 10);
-    if (level === 0) {
-      editor.chain().focus().setParagraph().run();
-    } else {
-      editor.chain().focus().toggleHeading({ level }).run();
-    }
+    if (level === 0) editor.chain().focus().setParagraph().run();
+    else editor.chain().focus().toggleHeading({ level }).run();
   };
 
   const handleFontChange = (e) => {
-    if (e.target.value) {
-      editor.chain().focus().setFontFamily(e.target.value).run();
-    }
+    if (e.target.value) editor.chain().focus().setFontFamily(e.target.value).run();
   };
 
-  const handleFontSizeChange = (e) => {
-    const size = e.target.value;
-    if (size) {
-      editor.chain().focus().setMark("textStyle", { fontSize: `${size}px` }).run();
-    }
+  const handleFontSize = (size) => {
+    editor.chain().focus().setFontSize(size).run();
+    setSizeOpen(false);
   };
 
-  const handleColorChange = (e) => {
-    editor.chain().focus().setColor(e.target.value).run();
+  const handleTextColor = (color) => {
+    editor.chain().focus().setColor(color).run();
+    setTextColorOpen(false);
   };
 
-  const handleHighlightChange = (e) => {
-    editor.chain().focus().toggleHighlight({ color: e.target.value }).run();
+  const handleBgColor = (color) => {
+    editor.chain().focus().toggleHighlight({ color }).run();
+    setBgColorOpen(false);
+  };
+
+  const clearHighlight = () => {
+    editor.chain().focus().unsetHighlight().run();
+    setBgColorOpen(false);
   };
 
   const setLink = () => {
     const url = window.prompt("أدخل الرابط:");
-    if (url) {
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-    } else if (url === "") {
-      editor.chain().focus().unsetLink().run();
-    }
+    if (url) editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    else if (url === "") editor.chain().focus().unsetLink().run();
   };
+
+  // Detect current font size from fontSize mark
+  const getCurrentFontSize = () => {
+    const attrs = editor.getAttributes("fontSize");
+    return attrs?.fontSize || "";
+  };
+
+  const currentFontSize = getCurrentFontSize();
+  const currentTextColor = editor.getAttributes("textStyle")?.color || "";
+  const currentHighlight = editor.getAttributes("highlight")?.color || "";
 
   return (
     <div className="toolbar" role="toolbar" aria-label="شريط تنسيق النص">
@@ -110,20 +208,12 @@ export default function Toolbar({ editor }) {
       <div className="toolbar__group">
         <select
           className="toolbar-select"
-          value={HEADINGS.find((h) =>
-            h.level === 0
-              ? !editor.isActive("heading")
-              : editor.isActive("heading", { level: h.level })
-          )?.level ?? 0}
+          value={HEADINGS.find((h) => h.level === 0 ? !editor.isActive("heading") : editor.isActive("heading", { level: h.level }))?.level ?? 0}
           onChange={handleHeadingChange}
           title="نمط العنوان"
           style={{ minWidth: 90 }}
         >
-          {HEADINGS.map((h) => (
-            <option key={h.level} value={h.level}>
-              {h.label}
-            </option>
-          ))}
+          {HEADINGS.map((h) => <option key={h.level} value={h.level}>{h.label}</option>)}
         </select>
       </div>
 
@@ -131,38 +221,49 @@ export default function Toolbar({ editor }) {
 
       {/* Font family */}
       <div className="toolbar__group">
-        <select
-          className="toolbar-select"
-          onChange={handleFontChange}
-          title="نوع الخط"
-          style={{ minWidth: 100 }}
-          defaultValue=""
-        >
+        <select className="toolbar-select" onChange={handleFontChange} title="نوع الخط" style={{ minWidth: 100 }} defaultValue="">
           <option value="">الخط</option>
-          {FONTS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
+          {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
         </select>
       </div>
 
       {/* Font size */}
       <div className="toolbar__group">
-        <select
-          className="toolbar-select"
-          onChange={handleFontSizeChange}
-          title="حجم الخط"
-          style={{ minWidth: 56 }}
-          defaultValue=""
+        <Dropdown
+          open={sizeOpen}
+          onClose={() => setSizeOpen(false)}
+          trigger={
+            <TBtn
+              title="حجم الخط"
+              onClick={() => setSizeOpen((v) => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 13, minWidth: 44 }}
+            >
+              <Type size={13} />
+              {currentFontSize ? <span>{currentFontSize}</span> : null}
+              <ChevronDown size={11} />
+            </TBtn>
+          }
         >
-          <option value="">الحجم</option>
-          {SIZES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+            {SIZES.map((s) => (
+              <button
+                key={s}
+                onClick={() => handleFontSize(s)}
+                style={{
+                  padding: "4px 8px",
+                  fontSize: s >= 24 ? 14 : s,
+                  borderRadius: "var(--radius-sm)",
+                  border: currentFontSize === s ? "2px solid var(--primary)" : "1px solid transparent",
+                  background: currentFontSize === s ? "var(--primary-ghost)" : "transparent",
+                  cursor: "pointer",
+                  color: "var(--text)",
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </Dropdown>
       </div>
 
       <div className="toolbar__sep" />
@@ -188,27 +289,54 @@ export default function Toolbar({ editor }) {
 
       <div className="toolbar__sep" />
 
-      {/* Colors */}
+      {/* Text color */}
       <div className="toolbar__group">
-        <label title="لون النص" style={{ position: "relative", cursor: "pointer" }}>
-          <input
-            type="color"
-            className="toolbar-color"
-            onChange={handleColorChange}
-            defaultValue="#202124"
-            title="لون النص"
+        <Dropdown
+          open={textColorOpen}
+          onClose={() => setTextColorOpen(false)}
+          trigger={
+            <TBtn
+              title="لون النص"
+              onClick={() => setTextColorOpen((v) => !v)}
+              isActive={!!currentTextColor}
+              style={{ display: "flex", alignItems: "center", gap: 2 }}
+            >
+              <span style={{ fontSize: 15, fontWeight: 700, color: currentTextColor || "var(--text)", lineHeight: 1 }}>A</span>
+              <span style={{ width: 14, height: 3, background: currentTextColor || "var(--text)", borderRadius: 1, display: "block" }} />
+            </TBtn>
+          }
+        >
+          <ColorPalette
+            colors={TEXT_COLORS}
+            onSelect={handleTextColor}
+            onClear={() => { editor.chain().focus().unsetColor().run(); setTextColorOpen(false); }}
+            activeColor={currentTextColor}
           />
-        </label>
-        <label title="تظليل" style={{ position: "relative", cursor: "pointer" }}>
-          <input
-            type="color"
-            className="toolbar-color"
-            onChange={handleHighlightChange}
-            defaultValue="#ffff00"
-            title="تظليل"
+        </Dropdown>
+
+        {/* Background color */}
+        <Dropdown
+          open={bgColorOpen}
+          onClose={() => setBgColorOpen(false)}
+          trigger={
+            <TBtn
+              title="لون الخلفية"
+              onClick={() => setBgColorOpen((v) => !v)}
+              isActive={editor.isActive("highlight")}
+              style={{ display: "flex", alignItems: "center", gap: 2 }}
+            >
+              <Highlighter size={15} />
+              <span style={{ width: 14, height: 3, background: currentHighlight || "var(--text-muted)", borderRadius: 1, display: "block" }} />
+            </TBtn>
+          }
+        >
+          <ColorPalette
+            colors={BG_COLORS}
+            onSelect={handleBgColor}
+            onClear={clearHighlight}
+            activeColor={currentHighlight}
           />
-          <Highlighter size={10} style={{ position: "absolute", bottom: 2, right: 2, pointerEvents: "none", opacity: 0.6 }} />
-        </label>
+        </Dropdown>
       </div>
 
       <div className="toolbar__sep" />

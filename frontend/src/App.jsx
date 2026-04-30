@@ -10,7 +10,9 @@ import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import SpellcheckExtension from "./extensions/spellcheck";
+import FontSize from "./extensions/fontSize";
 import Toolbar from "./components/Toolbar";
+import Toast from "./components/Toast";
 import AIPanel from "./components/AIPanel";
 import OutlineSidebar from "./components/OutlineSidebar";
 import DocumentManager from "./components/DocumentManager";
@@ -117,6 +119,8 @@ export default function App() {
   const [issueCount, setIssueCount] = useState(0);
   const [ollamaStatus, setOllamaStatus] = useState("checking");
   const [contextMenu, setContextMenu] = useState(null);
+  const [ollamaAction, setOllamaAction] = useState(null); // "starting" | "killing" | null
+  const [toasts, setToasts] = useState([]);
 
   const paperRef = useRef(null);
   const editorStageRef = useRef(null);
@@ -177,7 +181,16 @@ export default function App() {
     return [];
   }, []);
 
-  useEffect(() => { loadProjects(); }, []); // eslint-disable-line
+  useEffect(() => {
+    loadProjects().then((list) => {
+      // Auto-select first project if none is selected (prevents data loss
+      // when users run the portable build without explicitly creating a project)
+      const savedProjectId = localStorage.getItem("aragon-write-project");
+      if (!savedProjectId && list && list.length > 0) {
+        setCurrentProjectId(list[0].id);
+      }
+    });
+  }, []); // eslint-disable-line
 
   // ── Load project docs when project changes ──
   const loadProjectDocs = useCallback(async (projectId) => {
@@ -227,15 +240,30 @@ export default function App() {
       );
       if (toCheck.length === 0) return;
       toCheck.forEach((w) => pendingWordsRef.current.add(w));
-      await Promise.all(toCheck.map(async (word) => {
-        try {
-          const res = await fetch(`${API_URL}/check-word`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ word, model: settings.model }) });
-          const payload = await res.json();
-          cacheRef.current.set(word, res.ok ? payload : { correct: true });
-        } catch { cacheRef.current.set(word, { correct: true }); }
-        finally { pendingWordsRef.current.delete(word); }
-        if (!destroyedRef.current && e && !e.isDestroyed) syncDecorationsFromCache(e);
-      }));
+      // Batch word checks into a single request
+      try {
+        const res = await fetch(`${API_URL}/check-words`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ words: toCheck, model: settings.model }),
+        });
+        if (res.ok) {
+          const results = await res.json();
+          for (const item of results) {
+            if (item && item.word !== undefined) {
+              cacheRef.current.set(item.word, item.result || { correct: true });
+            }
+          }
+        } else {
+          // fallback: mark all as correct on server error
+          for (const w of toCheck) cacheRef.current.set(w, { correct: true });
+        }
+      } catch {
+        for (const w of toCheck) cacheRef.current.set(w, { correct: true });
+      } finally {
+        for (const w of toCheck) pendingWordsRef.current.delete(w);
+      }
+      if (!destroyedRef.current && e && !e.isDestroyed) syncDecorationsFromCache(e);
     }, SPELLCHECK_DEBOUNCE_MS);
   }, [settings.spellcheckEnabled, settings.model, syncDecorationsFromCache]);
 
@@ -245,7 +273,7 @@ export default function App() {
       StarterKit.configure({ codeBlock: false }),
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
-      TextStyle, Color, FontFamily,
+      TextStyle, Color, FontFamily, FontSize,
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: "ابدأ الكتابة هنا..." }),
@@ -309,7 +337,9 @@ export default function App() {
                   method: "PUT",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify(doc),
-                }).catch(() => {});
+                }).catch(() => {
+                  showToast("فشل الحفظ — تأكد من تشغيل التطبيق", "error");
+                });
               }
             } else {
               saveDocuments(updated);
@@ -481,7 +511,9 @@ export default function App() {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...doc, title }),
-          }).catch(() => {});
+          }).catch(() => {
+            showToast("فشل حفظ العنوان", "error");
+          });
         }
       }, 800);
     }
@@ -498,6 +530,34 @@ export default function App() {
 
   const updateSettings = useCallback((updates) => {
     setSettings((prev) => { const next = { ...prev, ...updates }; saveSettings(next); return next; });
+  }, []);
+
+  // ── Toast ──
+  const showToast = useCallback((message, type = "info", duration = 4000) => {
+    const id = genId();
+    setToasts((prev) => [...prev, { id, message, type, duration }]);
+  }, []);
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ── Ollama control ──
+  const startOllama = useCallback(async () => {
+    setOllamaAction("starting");
+    try {
+      await fetch(`${API_URL}/ollama/start`, { method: "POST" });
+      setTimeout(() => setOllamaStatus("online"), 3000);
+    } catch {}
+    setTimeout(() => setOllamaAction(null), 3200);
+  }, []);
+
+  const killOllama = useCallback(async () => {
+    setOllamaAction("killing");
+    try {
+      await fetch(`${API_URL}/ollama/kill`, { method: "POST" });
+      setOllamaStatus("error");
+    } catch {}
+    setTimeout(() => setOllamaAction(null), 1000);
   }, []);
 
   // Ensure at least one document exists (no-project mode)
@@ -607,7 +667,12 @@ export default function App() {
         docCount={documents.length}
         sessionWords={sessionWords}
         writingGoal={settings.writingGoal || 0}
+        onStartOllama={startOllama}
+        onKillOllama={killOllama}
+        ollamaAction={ollamaAction}
       />
+
+      <Toast toasts={toasts} onDismiss={dismissToast} />
 
       {/* Modals */}
       {isProjectManagerOpen && (
