@@ -17,6 +17,7 @@ import DocumentManager from "./components/DocumentManager";
 import ProjectManager from "./components/ProjectManager";
 import Settings from "./components/Settings";
 import StatusBar from "./components/StatusBar";
+import Welcome from "./components/Welcome";
 import {
   PenLine, FolderOpen, Settings as SettingsIcon, Sun, Moon, Sparkles,
   AlignJustify, ZoomIn, ZoomOut, Maximize2, Minimize2, Palette,
@@ -515,6 +516,8 @@ export default function App() {
 
   return (
     <div id="root" className={isFocusMode ? "app-focus-mode" : ""}>
+      <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} />
+
       {isFocusMode && (
         <div className="focus-exit-hint">
           <span>F11 أو ESC — للخروج من وضع التركيز</span>
