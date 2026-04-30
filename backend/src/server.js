@@ -27,6 +27,30 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// ─── Security helpers ─────────────────────────────────────────────────────────
+const ID_RE = /^[a-zA-Z0-9_-]+$/;
+function sanitizeId(id) {
+  if (typeof id !== "string") return null;
+  return ID_RE.test(id) ? id : null;
+}
+
+function sanitizeDoc(body) {
+  if (typeof body !== "object" || body === null) return null;
+  const allowed = ["id", "title", "content", "createdAt", "updatedAt"];
+  const doc = {};
+  for (const key of allowed) {
+    if (body[key] !== undefined) doc[key] = body[key];
+  }
+  return doc;
+}
+
+// Atomic write: write to temp then rename
+async function writeAtomic(filePath, data) {
+  const tmpPath = filePath + ".tmp";
+  await fsp.writeFile(tmpPath, data, "utf-8");
+  await fsp.rename(tmpPath, filePath);
+}
+
 // Find the on-disk folder for a project by its id
 async function findProjectFolder(id) {
   await ensureDir(STORAGE_ROOT);
@@ -201,6 +225,54 @@ app.post("/check-word", async (req, res) => {
   } catch { return res.json({ correct: true }); }
 });
 
+// POST /check-words — batch spellcheck (replaces N+1 /check-word calls)
+app.post("/check-words", async (req, res) => {
+  const words = Array.isArray(req.body?.words) ? req.body.words : [];
+  const model = req.body?.model || DEFAULT_MODEL;
+  if (words.length === 0) return res.json([]);
+
+  const results = [];
+  const toAsk = [];
+  for (const raw of words) {
+    const word = normalizeWord(raw);
+    if (!word || !isArabicWord(word) || isNumberOnly(word)) {
+      results.push({ word, result: { correct: true } });
+      continue;
+    }
+    if (wordCache.has(word)) {
+      results.push({ word, result: wordCache.get(word) });
+      continue;
+    }
+    toAsk.push(word);
+  }
+
+  if (toAsk.length > 0) {
+    // Build a single prompt with all words
+    const prompt = `${WORD_CHECK_PROMPT}\n` +
+      toAsk.map((w, i) => `${i + 1}. ${w}`).join("\n") +
+      "\n\nأجب بقائمة مرقمة بنفس الترتيب.";
+    try {
+      const response = await ollamaGenerate(prompt, model, false);
+      const data = await response.json();
+      const lines = (data.response || "").split(/\r?\n/);
+      for (let i = 0; i < toAsk.length; i++) {
+        const word = toAsk[i];
+        const line = lines.find((l) => l.includes(`${i + 1}.`) || l.includes(`${word}`)) || "";
+        const result = parseWordCheck(line, word);
+        wordCache.set(word, result);
+        results.push({ word, result });
+      }
+    } catch {
+      for (const word of toAsk) {
+        wordCache.set(word, { correct: true });
+        results.push({ word, result: { correct: true } });
+      }
+    }
+  }
+
+  return res.json(results);
+});
+
 // ─── Ollama control ───────────────────────────────────────────────────────────
 
 // POST /ollama/kill — stop the Ollama process
@@ -268,7 +340,7 @@ app.post("/fs/projects", async (req, res) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await fsp.writeFile(path.join(projectDir, "_project.json"), JSON.stringify(meta, null, 2), "utf-8");
+    await writeAtomic(path.join(projectDir, "_project.json"), JSON.stringify(meta, null, 2));
     res.json(meta);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -276,7 +348,9 @@ app.post("/fs/projects", async (req, res) => {
 // PUT /fs/projects/:id — rename / update project
 app.put("/fs/projects/:id", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid project ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
     const metaPath = path.join(folder, "_project.json");
     const meta = JSON.parse(await fsp.readFile(metaPath, "utf-8"));
@@ -284,7 +358,7 @@ app.put("/fs/projects/:id", async (req, res) => {
     if (title !== undefined) meta.title = title;
     if (gradient !== undefined) meta.gradient = gradient;
     meta.updatedAt = new Date().toISOString();
-    await fsp.writeFile(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    await writeAtomic(metaPath, JSON.stringify(meta, null, 2));
     res.json(meta);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -292,7 +366,9 @@ app.put("/fs/projects/:id", async (req, res) => {
 // DELETE /fs/projects/:id — delete project folder
 app.delete("/fs/projects/:id", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid project ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
     await fsp.rm(folder, { recursive: true, force: true });
     res.json({ ok: true });
@@ -302,14 +378,18 @@ app.delete("/fs/projects/:id", async (req, res) => {
 // GET /fs/projects/:id/docs — list documents (metadata only, no content)
 app.get("/fs/projects/:id/docs", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid project ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
     const files = await fsp.readdir(folder);
     const docs = [];
     for (const file of files) {
       if (!file.endsWith(".json") || file === "_project.json") continue;
       try {
-        const doc = JSON.parse(await fsp.readFile(path.join(folder, file), "utf-8"));
+        const raw = await fsp.readFile(path.join(folder, file), "utf-8");
+        const doc = JSON.parse(raw);
+        if (!doc.id || !doc.title) continue; // skip malformed
         docs.push(doc);
       } catch {}
     }
@@ -321,19 +401,26 @@ app.get("/fs/projects/:id/docs", async (req, res) => {
 // POST /fs/projects/:id/docs — create document
 app.post("/fs/projects/:id/docs", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid project ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
-    const doc = { ...req.body };
+    const body = sanitizeDoc(req.body);
+    if (!body) return res.status(400).json({ error: "Invalid document body" });
+    const doc = { ...body };
     if (!doc.id) doc.id = genId();
+    const docId = sanitizeId(doc.id);
+    if (!docId) return res.status(400).json({ error: "Invalid document ID" });
+    doc.id = docId;
     doc.createdAt = doc.createdAt || new Date().toISOString();
     doc.updatedAt = new Date().toISOString();
-    await fsp.writeFile(path.join(folder, `${doc.id}.json`), JSON.stringify(doc, null, 2), "utf-8");
+    await writeAtomic(path.join(folder, `${docId}.json`), JSON.stringify(doc, null, 2));
     // bump project updatedAt
     try {
       const mp = path.join(folder, "_project.json");
       const meta = JSON.parse(await fsp.readFile(mp, "utf-8"));
       meta.updatedAt = new Date().toISOString();
-      await fsp.writeFile(mp, JSON.stringify(meta, null, 2), "utf-8");
+      await writeAtomic(mp, JSON.stringify(meta, null, 2));
     } catch {}
     res.json(doc);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -342,16 +429,21 @@ app.post("/fs/projects/:id/docs", async (req, res) => {
 // PUT /fs/projects/:id/docs/:docId — save / update document
 app.put("/fs/projects/:id/docs/:docId", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    const docId = sanitizeId(req.params.docId);
+    if (!id || !docId) return res.status(400).json({ error: "Invalid project or document ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
-    const doc = { ...req.body, updatedAt: new Date().toISOString() };
-    await fsp.writeFile(path.join(folder, `${req.params.docId}.json`), JSON.stringify(doc, null, 2), "utf-8");
+    const body = sanitizeDoc(req.body);
+    if (!body) return res.status(400).json({ error: "Invalid document body" });
+    const doc = { ...body, updatedAt: new Date().toISOString() };
+    await writeAtomic(path.join(folder, `${docId}.json`), JSON.stringify(doc, null, 2));
     // bump project updatedAt
     try {
       const mp = path.join(folder, "_project.json");
       const meta = JSON.parse(await fsp.readFile(mp, "utf-8"));
       meta.updatedAt = new Date().toISOString();
-      await fsp.writeFile(mp, JSON.stringify(meta, null, 2), "utf-8");
+      await writeAtomic(mp, JSON.stringify(meta, null, 2));
     } catch {}
     res.json(doc);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -360,16 +452,49 @@ app.put("/fs/projects/:id/docs/:docId", async (req, res) => {
 // DELETE /fs/projects/:id/docs/:docId — delete document
 app.delete("/fs/projects/:id/docs/:docId", async (req, res) => {
   try {
-    const folder = await findProjectFolder(req.params.id);
+    const id = sanitizeId(req.params.id);
+    const docId = sanitizeId(req.params.docId);
+    if (!id || !docId) return res.status(400).json({ error: "Invalid project or document ID" });
+    const folder = await findProjectFolder(id);
     if (!folder) return res.status(404).json({ error: "Project not found" });
-    await fsp.unlink(path.join(folder, `${req.params.docId}.json`));
+    await fsp.unlink(path.join(folder, `${docId}.json`));
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Ensure a default project exists so users never lose docs in localStorage
+async function ensureDefaultProject() {
+  try {
+    await ensureDir(STORAGE_ROOT);
+    const entries = await fsp.readdir(STORAGE_ROOT, { withFileTypes: true });
+    const hasProjects = entries.some((e) => e.isDirectory());
+    if (!hasProjects) {
+      const id = genId();
+      const projectDir = path.join(STORAGE_ROOT, id);
+      await ensureDir(projectDir);
+      const meta = {
+        id,
+        title: "مستنداتي",
+        gradient: null,
+        docCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await writeAtomic(
+        path.join(projectDir, "_project.json"),
+        JSON.stringify(meta, null, 2)
+      );
+      console.log(`  Created default project: ${meta.title}`);
+    }
+  } catch (e) {
+    console.error("  Failed to create default project:", e.message);
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`✓ Aragon Write backend running on http://localhost:${PORT}`);
   console.log(`  Ollama: ${OLLAMA_BASE} | Model: ${DEFAULT_MODEL}`);
   console.log(`  Storage: ${STORAGE_ROOT}`);
+  await ensureDefaultProject();
 });
