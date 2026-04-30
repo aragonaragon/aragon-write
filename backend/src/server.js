@@ -15,9 +15,12 @@ const DEFAULT_MODEL = process.env.MODEL || "qwen2.5:7b";
 const wordCache = new Map();
 
 // ─── File-system storage root ─────────────────────────────────────────────────
-// NOTE: Uses "AragonWrite" (no space) to avoid case-insensitive collision
-// with the project source folder "aragon write" on Windows.
-const STORAGE_ROOT = path.join(os.homedir(), "Documents", "AragonWrite");
+// User can override via STORAGE_ROOT env var. Default: ~/Documents/Aragon Write
+// (with space) to avoid colliding with a developer source checkout that may
+// also be named "AragonWrite" inside Documents.
+const STORAGE_ROOT =
+  process.env.STORAGE_ROOT ||
+  path.join(os.homedir(), "Documents", "Aragon Write");
 
 async function ensureDir(p) {
   await fsp.mkdir(p, { recursive: true });
