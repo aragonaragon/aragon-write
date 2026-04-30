@@ -113,6 +113,7 @@ async function createWindow() {
     minHeight: 660,
     backgroundColor: "#fdf8f0",
     title: "Aragon Write",
+    icon: path.join(__dirname, "icon.ico"),
     show: false,
     webPreferences: {
       nodeIntegration: false,
