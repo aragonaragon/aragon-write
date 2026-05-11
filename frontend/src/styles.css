@@ -803,6 +803,21 @@ button, input, textarea, select {
   color: var(--ai-color);
 }
 
+.chat-message__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+  flex-wrap: wrap;
+}
+
+.chat-message__actions .btn-sm {
+  font-size: 11px;
+  padding: 4px 8px;
+  gap: 4px;
+}
+
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }

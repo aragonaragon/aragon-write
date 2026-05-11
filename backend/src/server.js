@@ -11,7 +11,7 @@ const exec = promisify(execCb);
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const OLLAMA_BASE = process.env.OLLAMA_URL || "http://localhost:11434";
-const DEFAULT_MODEL = process.env.MODEL || "qwen2.5:7b";
+const DEFAULT_MODEL = process.env.MODEL || "gemma4:e4b";
 const wordCache = new Map();
 
 // ─── File-system storage root ─────────────────────────────────────────────────
@@ -96,8 +96,13 @@ const ACTION_PROMPTS = {
     `اقترح مخططاً تفصيلياً لقصة أو مقال بناءً على الموضوع التالي. قدّم المخطط بشكل منظم:\n\n${t}`,
   titles: (t) =>
     `اقترح 5 عناوين جذابة وإبداعية لنص يتناول الموضوع التالي. قدّم كل عنوان في سطر واحد:\n\n${t}`,
-  chat: (docContent, message) =>
-    `أنت مساعد كتابي إبداعي. السياق هو المستند التالي:\n\n---\n${docContent}\n---\n\nالسؤال أو الطلب: ${message}\n\nأجب بشكل مفيد ومحدد:`,
+  chat: (docContent, message) => {
+    const hasDoc = docContent && docContent.trim().length > 0;
+    const docBlock = hasDoc
+      ? `\n\nمستند المستخدم الحالي (استعمله كسياق فقط إذا كان السؤال متعلقاً به):\n---\n${docContent}\n---\n`
+      : "";
+    return `أنت مساعد ذكي ومفيد تجيب باللغة العربية بشكل واضح ومباشر. أجب عن أي سؤال أو طلب من المستخدم، سواء كان متعلقاً بالكتابة أو بأي موضوع آخر.${docBlock}\n\nسؤال المستخدم: ${message}\n\nالإجابة:`;
+  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

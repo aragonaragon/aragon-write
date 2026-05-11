@@ -121,11 +121,11 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                   className="settings-input"
                   value={settings.model}
                   onChange={(e) => onUpdate({ model: e.target.value })}
-                  placeholder="مثال: qwen2.5:7b أو llama3.1:8b"
+                  placeholder="مثال: gemma4:e4b أو gemma2:9b"
                 />
               )}
               <span className="settings-field__hint">
-                الموديلات الموصى بها للعربية: qwen2.5:7b، Llama 3.1، Gemma2
+                الموديلات الموصى بها للعربية: gemma4:e4b (خفيف وسريع)، gemma2:9b (متوازن)، gemma4:26b (الأفضل للأجهزة القوية)
               </span>
             </div>
 

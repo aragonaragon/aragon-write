@@ -85,7 +85,7 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose }) {
                     </div>
                     <div className="welcome-step__desc">
                       افتح PowerShell ونفّذ:
-                      <code className="welcome-code">ollama pull qwen2.5:7b</code>
+                      <code className="welcome-code">ollama pull gemma4:e4b</code>
                     </div>
                   </div>
                 </div>

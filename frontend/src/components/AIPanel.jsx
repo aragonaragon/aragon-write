@@ -98,6 +98,8 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedChatIdx, setCopiedChatIdx] = useState(null);
+  const [addedChatIdx, setAddedChatIdx] = useState(null);
   const chatEndRef = useRef(null);
 
   const { text: result, streaming, error, run, stop, clear } = useStream(apiUrl);
@@ -156,10 +158,30 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const appendChatToDoc = (content, idx) => {
+    if (!editor || !content) return;
+    editor.chain().focus().command(({ tr, dispatch }) => {
+      if (dispatch) {
+        const end = tr.doc.content.size;
+        tr.insertText("\n" + content, end);
+      }
+      return true;
+    }).run();
+    setAddedChatIdx(idx);
+    setTimeout(() => setAddedChatIdx(null), 1500);
+  };
+
+  const copyChatMessage = async (content, idx) => {
+    if (!content) return;
+    await navigator.clipboard.writeText(content);
+    setCopiedChatIdx(idx);
+    setTimeout(() => setCopiedChatIdx(null), 1500);
+  };
+
   const sendChat = async () => {
-    if (!chatInput.trim() || !editor) return;
+    if (!chatInput.trim()) return;
     const message = chatInput.trim();
-    const docContent = editor.getText();
+    const docContent = editor ? editor.getText() : "";
     setChatInput("");
     setChatMessages((prev) => [...prev, { role: "user", content: message }]);
 
@@ -329,20 +351,43 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
             {chatMessages.length === 0 && (
               <div className="outline-empty">
                 <Sparkles size={24} style={{ margin: "0 auto 8px", display: "block", opacity: 0.4 }} />
-                اسأل عن مستندك أو اطلب المساعدة في الكتابة
+                اسأل عن أي شي — معلومة، فكرة، أو مساعدة في مستندك
               </div>
             )}
             <div className="ai-chat__messages">
-              {chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`chat-message ${msg.role}${msg.content === "__streaming__" ? " streaming" : ""}`}
-                >
-                  {msg.content === "__streaming__"
-                    ? (result || <span className="ai-spinner" style={{ display: "inline-block" }} />)
-                    : msg.content}
-                </div>
-              ))}
+              {chatMessages.map((msg, i) => {
+                const isStreaming = msg.content === "__streaming__";
+                const displayContent = isStreaming ? result : msg.content;
+                const showActions = msg.role === "assistant" && !isStreaming && msg.content;
+                return (
+                  <div key={i} className={`chat-message ${msg.role}${isStreaming ? " streaming" : ""}`}>
+                    {isStreaming
+                      ? (result || <span className="ai-spinner" style={{ display: "inline-block" }} />)
+                      : msg.content}
+                    {showActions && (
+                      <div className="chat-message__actions">
+                        <button
+                          className="btn-sm"
+                          onClick={() => appendChatToDoc(displayContent, i)}
+                          disabled={!editor}
+                          title="أضف في نهاية المستند"
+                        >
+                          {addedChatIdx === i ? <Check size={11} /> : <PenLine size={11} />}
+                          {addedChatIdx === i ? "أُضيف" : "أضف للمستند"}
+                        </button>
+                        <button
+                          className="btn-sm"
+                          onClick={() => copyChatMessage(displayContent, i)}
+                          title="نسخ"
+                        >
+                          {copiedChatIdx === i ? <Check size={11} /> : <Copy size={11} />}
+                          {copiedChatIdx === i ? "تم" : "نسخ"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div ref={chatEndRef} />
             </div>
 

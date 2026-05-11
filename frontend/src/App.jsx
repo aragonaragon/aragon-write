@@ -34,7 +34,7 @@ const SPELLCHECK_DEBOUNCE_MS = 800;
 
 const DEFAULT_SETTINGS = {
   ollamaUrl: "http://localhost:11434",
-  model: "qwen2.5:7b",
+  model: "gemma4:e4b",
   theme: "light",
   editorFont: "amiri",
   spellcheckEnabled: false,
