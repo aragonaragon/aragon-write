@@ -70,7 +70,7 @@ export default function DocumentManager({
         <div className="modal__header">
           <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {projectMode && <BookOpen size={18} />}
-            {projectMode ? (projectTitle || "الرواية") : "المستندات"}
+            {projectMode ? (projectTitle || "المشروع") : "المستندات"}
           </h2>
           <div style={{ display: "flex", gap: 6 }}>
             {projectMode && onExitProject && (
@@ -78,7 +78,7 @@ export default function DocumentManager({
                 className="btn btn-secondary"
                 style={{ fontSize: 12, padding: "4px 10px", gap: 4 }}
                 onClick={() => { onExitProject(); onClose(); }}
-                title="الخروج من الرواية"
+                title="الخروج من المشروع"
               >
                 <LogOut size={13} />
                 خروج

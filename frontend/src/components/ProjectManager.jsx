@@ -51,7 +51,7 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
             <div className="project-new-form">
               <input
                 className="settings-input"
-                placeholder="اسم الرواية أو المشروع..."
+                placeholder="اسم المشروع..."
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -76,7 +76,7 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
               {/* New project card */}
               <button className="project-new-card" onClick={() => setCreatingNew(true)}>
                 <BookPlus size={32} />
-                <span>رواية جديدة</span>
+                <span>مشروع جديد</span>
               </button>
 
               {projects.map((project) => (
@@ -120,8 +120,8 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
                   fontSize: 14,
                 }}>
                   <div style={{ fontSize: 36, marginBottom: 8 }}>📚</div>
-                  <div>ليس لديك أي رواية حتى الآن.</div>
-                  <div>اضغط «رواية جديدة» لإنشاء أول مشروع.</div>
+                  <div>ليس لديك أي مشروع حتى الآن.</div>
+                  <div>اضغط «مشروع جديد» لإنشاء أول مشروع.</div>
                 </div>
               )}
             </div>
@@ -131,7 +131,7 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
         <div className="modal__footer">
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             <FolderOpen size={12} style={{ display: "inline", marginLeft: 4 }} />
-            المستندات محفوظة في مجلد الروايات على جهازك
+            المستندات محفوظة في مجلد المشاريع على جهازك
           </span>
           <button className="btn btn-secondary" onClick={onClose}>إغلاق</button>
         </div>

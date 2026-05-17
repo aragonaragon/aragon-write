@@ -16,10 +16,12 @@ import Toast from "./components/Toast";
 import AIPanel from "./components/AIPanel";
 import OutlineSidebar from "./components/OutlineSidebar";
 import DocumentManager from "./components/DocumentManager";
+import DocSwitcher from "./components/DocSwitcher";
 import ProjectManager from "./components/ProjectManager";
 import Settings from "./components/Settings";
 import StatusBar from "./components/StatusBar";
 import Welcome from "./components/Welcome";
+import Home from "./components/Home";
 import {
   PenLine, FolderOpen, Settings as SettingsIcon, Sun, Moon, Sparkles,
   AlignJustify, ZoomIn, ZoomOut, Maximize2, Minimize2, Palette,
@@ -110,6 +112,7 @@ export default function App() {
   });
 
   // ── UI state ──
+  const [isHome, setIsHome] = useState(true);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isOutlineOpen, setIsOutlineOpen] = useState(true);
   const [isDocManagerOpen, setIsDocManagerOpen] = useState(false);
@@ -183,14 +186,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadProjects().then((list) => {
-      // Auto-select first project if none is selected (prevents data loss
-      // when users run the portable build without explicitly creating a project)
-      const savedProjectId = localStorage.getItem("aragon-write-project");
-      if (!savedProjectId && list && list.length > 0) {
-        setCurrentProjectId(list[0].id);
-      }
-    });
+    loadProjects();
+    // No auto-select: the user chooses from the Home screen explicitly.
   }, []); // eslint-disable-line
 
   // ── Load project docs when project changes ──
@@ -410,6 +407,7 @@ export default function App() {
         setProjects((prev) => [project, ...prev]);
         setCurrentProjectId(project.id);
         setIsProjectManagerOpen(false);
+        setIsHome(false);
       }
     } catch {}
   }, []);
@@ -417,6 +415,16 @@ export default function App() {
   const openProject = useCallback((id) => {
     setCurrentProjectId(id);
     setIsProjectManagerOpen(false);
+    setIsHome(false);
+  }, []);
+
+  const startQuickWrite = useCallback(() => {
+    setCurrentProjectId(null);
+    setIsHome(false);
+  }, []);
+
+  const goHome = useCallback(() => {
+    setIsHome(true);
   }, []);
 
   const deleteProject = useCallback(async (id) => {
@@ -561,10 +569,10 @@ export default function App() {
     setTimeout(() => setOllamaAction(null), 1000);
   }, []);
 
-  // Ensure at least one document exists (no-project mode)
+  // Ensure at least one document exists (no-project mode, but only after leaving Home)
   useEffect(() => {
-    if (!projectMode && documents.length === 0) createDocument();
-  }, []); // eslint-disable-line
+    if (!isHome && !projectMode && documents.length === 0) createDocument();
+  }, [isHome]); // eslint-disable-line
 
   // Theme cycle
   const themeIcon = settings.theme === "dark" ? <Sun size={16} /> : settings.theme === "sepia" ? <Palette size={16} /> : <Moon size={16} />;
@@ -573,6 +581,36 @@ export default function App() {
     updateSettings({ theme: next });
   };
   const themeNextLabel = settings.theme === "light" ? "داكن" : settings.theme === "dark" ? "عاجي" : "فاتح";
+
+  if (isHome) {
+    return (
+      <div id="root">
+        <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} />
+        <Home
+          projects={projects}
+          onOpenProject={openProject}
+          onCreateProject={createProject}
+          onQuickWrite={startQuickWrite}
+          onDeleteProject={deleteProject}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          theme={settings.theme}
+          onCycleTheme={cycleTheme}
+          ollamaStatus={ollamaStatus}
+        />
+        {isSettingsOpen && (
+          <Settings
+            settings={settings}
+            onUpdate={updateSettings}
+            onClose={() => setIsSettingsOpen(false)}
+            apiUrl={API_URL}
+          />
+        )}
+        {toasts.map((t) => (
+          <Toast key={t.id} message={t.message} type={t.type} duration={t.duration} onDismiss={() => dismissToast(t.id)} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div id="root" className={isFocusMode ? "app-focus-mode" : ""}>
@@ -590,10 +628,10 @@ export default function App() {
           <div className="topbar__logo-icon">أ</div>
         </div>
 
-        {/* Project breadcrumb */}
+        {/* Project breadcrumb — clicking goes back to Home */}
         {projectMode ? (
           <div className="topbar__breadcrumb">
-            <button className="topbar__breadcrumb-btn" onClick={() => setIsProjectManagerOpen(true)} title="المكتبة">
+            <button className="topbar__breadcrumb-btn" onClick={goHome} title="العودة للمكتبة">
               <BookOpen size={14} />
               <span>{currentProject?.title || "..."}</span>
             </button>
@@ -602,20 +640,22 @@ export default function App() {
         ) : (
           <button
             className="topbar__library-btn"
-            onClick={() => setIsProjectManagerOpen(true)}
-            title="مكتبة الروايات"
+            onClick={goHome}
+            title="العودة للمكتبة"
           >
             <BookOpen size={14} />
-            مكتبتي
+            المكتبة
           </button>
         )}
 
-        <input
-          className="topbar__doc-title"
-          value={currentDoc?.title || ""}
-          onChange={(e) => updateDocTitle(e.target.value)}
-          placeholder={projectMode ? "عنوان الفصل" : "عنوان المستند"}
-          aria-label="عنوان المستند"
+        <DocSwitcher
+          documents={documents}
+          currentDoc={currentDoc}
+          projectMode={projectMode}
+          onOpen={openDocument}
+          onCreate={createDocument}
+          onOpenManager={() => setIsDocManagerOpen(true)}
+          onUpdateTitle={updateDocTitle}
         />
 
         <div className="topbar__spacer" />
@@ -633,7 +673,7 @@ export default function App() {
           </div>
 
           <button className="btn-icon" onClick={() => setIsOutlineOpen((v) => !v)} title="جدول المحتويات"><AlignJustify size={16} /></button>
-          <button className="btn-icon" onClick={() => setIsDocManagerOpen(true)} title={projectMode ? "فصول الرواية" : "المستندات"}><FolderOpen size={16} /></button>
+          <button className="btn-icon" onClick={() => setIsDocManagerOpen(true)} title={projectMode ? "فصول المشروع" : "المستندات"}><FolderOpen size={16} /></button>
           <button className="btn-icon" onClick={cycleTheme} title={`التالي: ${themeNextLabel}`}>{themeIcon}</button>
           <button className={`btn-icon${isFocusMode ? " active" : ""}`} onClick={() => setIsFocusMode((v) => !v)} title={isFocusMode ? "الخروج (F11)" : "وضع التركيز (F11)"}>{isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           <button className="btn-icon" onClick={() => setIsSettingsOpen(true)} title="الإعدادات"><SettingsIcon size={16} /></button>

@@ -234,7 +234,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
             <div className="settings-section__title">عن التطبيق</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 2 }}>
               <div>🔒 محلي 100% — بدون إنترنت، بدون سحابة، بدون تسجيل</div>
-              <div>💾 الروايات محفوظة في مجلد على قرصك الصلب</div>
+              <div>💾 المشاريع محفوظة في مجلد على قرصك الصلب</div>
               <div>🤖 يتكامل مع Ollama لتشغيل موديلات AI محلية</div>
               <div>📝 محرر نصوص WYSIWYG مع دعم كامل للعربية RTL</div>
             </div>
