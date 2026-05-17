@@ -6,6 +6,30 @@ import {
   ChevronLeft,
 } from "lucide-react";
 
+// Strip leftover Markdown artifacts from model output (some models keep emitting
+// `**bold**`, `### headers`, and `---` dividers despite the system prompt)
+function cleanMarkdown(text) {
+  if (!text) return text;
+  return text
+    // Headers: ###, ##, # at line start → drop the hashes
+    .replace(/^#{1,6}\s+/gm, "")
+    // Bold/italic markers: **text** or __text__ → text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    // Single * or _ around text (italic) — only when paired around non-space
+    .replace(/(^|[\s(])\*(\S[^*]*?\S)\*(?=[\s.,!?:;)]|$)/g, "$1$2")
+    .replace(/(^|[\s(])_(\S[^_]*?\S)_(?=[\s.,!?:;)]|$)/g, "$1$2")
+    // Horizontal rules: --- or *** or ___ on their own line
+    .replace(/^\s*([-*_])\1{2,}\s*$/gm, "")
+    // Inline code: `text` → text
+    .replace(/`([^`]+)`/g, "$1")
+    // Bullet markers at line start (* or -) → keep as plain dash
+    .replace(/^\s*\*\s+/gm, "- ")
+    // Trim excessive blank lines (more than 2 consecutive → 2)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 const QUICK_ACTIONS = [
   { id: "rewrite", label: "إعادة صياغة", icon: RefreshCw, requiresSelection: true },
   { id: "improve", label: "تحسين الأسلوب", icon: Sparkles, requiresSelection: true },
@@ -357,13 +381,14 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
             <div className="ai-chat__messages">
               {chatMessages.map((msg, i) => {
                 const isStreaming = msg.content === "__streaming__";
-                const displayContent = isStreaming ? result : msg.content;
+                const rawContent = isStreaming ? result : msg.content;
+                const displayContent = msg.role === "assistant" ? cleanMarkdown(rawContent) : rawContent;
                 const showActions = msg.role === "assistant" && !isStreaming && msg.content;
                 return (
                   <div key={i} className={`chat-message ${msg.role}${isStreaming ? " streaming" : ""}`}>
                     {isStreaming
-                      ? (result || <span className="ai-spinner" style={{ display: "inline-block" }} />)
-                      : msg.content}
+                      ? (displayContent || <span className="ai-spinner" style={{ display: "inline-block" }} />)
+                      : displayContent}
                     {showActions && (
                       <div className="chat-message__actions">
                         <button

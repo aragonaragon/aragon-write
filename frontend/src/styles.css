@@ -814,8 +814,28 @@ button, input, textarea, select {
 
 .chat-message__actions .btn-sm {
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 4px 10px;
   gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.chat-message__actions .btn-sm:hover {
+  background: var(--bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.chat-message__actions .btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @keyframes blink {
