@@ -9,19 +9,24 @@ import { Sparkles, Download, Terminal, Check, ArrowLeft } from "lucide-react";
  *
  * Dismissed via the "ابدأ" button → sets the flag.
  */
-export default function Welcome({ ollamaStatus, apiUrl, onClose }) {
+export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
 
-  // Decide whether to show
+  // Decide whether to show.
+  // Skip the "install Ollama" prompt if the user has chosen the external API
+  // path — they don't need Ollama at all in that case.
+  const usingExternalApi =
+    settings?.provider === "openai_compat" && !!settings?.apiBaseUrl;
+
   useEffect(() => {
     const seen = localStorage.getItem("aragon-write-onboarded") === "1";
     if (!seen) {
       setOpen(true);
       return;
     }
-    if (ollamaStatus === "error") setOpen(true);
-  }, [ollamaStatus]);
+    if (ollamaStatus === "error" && !usingExternalApi) setOpen(true);
+  }, [ollamaStatus, usingExternalApi]);
 
   if (!open) return null;
 

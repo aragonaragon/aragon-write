@@ -603,7 +603,7 @@ export default function App() {
   if (isHome) {
     return (
       <div id="root">
-        <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} />
+        <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} settings={settings} />
         <Home
           projects={projects}
           onOpenProject={openProject}
@@ -633,7 +633,7 @@ export default function App() {
 
   return (
     <div id="root" className={isFocusMode ? "app-focus-mode" : ""}>
-      <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} />
+      <Welcome ollamaStatus={ollamaStatus} apiUrl={API_URL} settings={settings} />
 
       {isFocusMode && (
         <div className="focus-exit-hint">
