@@ -1449,6 +1449,206 @@ button, input, textarea, select {
 
 .topbar__library-btn:hover { background: var(--bg); color: var(--text-primary); }
 
+/* ─── File Menu (Save As / Import) ──────────────────────────────────────────── */
+.file-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.file-menu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.file-menu__trigger:hover,
+.file-menu__trigger.is-open {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.file-menu__caret {
+  color: var(--text-muted);
+  transition: transform var(--transition);
+}
+
+.file-menu__caret.is-open {
+  transform: rotate(180deg);
+}
+
+.file-menu__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  inset-inline-start: 0;
+  min-width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 6px 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-menu__group-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 10px 4px;
+}
+
+.file-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: right;
+  font-family: inherit;
+  transition: background var(--transition);
+}
+
+.file-menu__item:hover {
+  background: var(--bg);
+}
+
+.file-menu__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.file-menu__item:disabled:hover {
+  background: transparent;
+}
+
+.file-menu__hint {
+  margin-inline-start: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.file-menu__divider {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 2px;
+}
+
+/* ─── Import Dialog ─────────────────────────────────────────────────────────── */
+.import-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+
+.import-source__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-source__meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.import-warning {
+  padding: 10px 12px;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  border-radius: var(--radius-sm);
+  color: #b45309;
+  font-size: 12px;
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.import-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.import-option:hover:not(.disabled) {
+  border-color: var(--primary);
+}
+
+.import-option.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.import-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-option input[type="radio"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.import-option__icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+}
+
+.import-option__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.import-option__desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ─── Doc Switcher ──────────────────────────────────────────────────────────── */
 .doc-switcher {
   position: relative;

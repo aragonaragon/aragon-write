@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.21.2"
+    "docx": "9.6.1",
+    "express": "^4.21.2",
+    "mammoth": "1.12.0",
+    "pdfjs-dist": "5.7.284"
   }
 }

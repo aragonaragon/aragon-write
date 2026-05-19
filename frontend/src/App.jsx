@@ -22,6 +22,13 @@ import Settings from "./components/Settings";
 import StatusBar from "./components/StatusBar";
 import Welcome from "./components/Welcome";
 import Home from "./components/Home";
+import FileMenu from "./components/FileMenu";
+import ImportDialog from "./components/ImportDialog";
+import {
+  saveTextAs, saveHtmlAs, savePdfAs, saveDocxAs,
+  pickAndReadFile, mdToHtml, htmlToMd, htmlToText,
+  readDocxAsHtml, readPdfAsHtml,
+} from "./lib/fileIO";
 import {
   PenLine, FolderOpen, Settings as SettingsIcon, Sun, Moon, Sparkles,
   AlignJustify, ZoomIn, ZoomOut, Maximize2, Minimize2, Palette,
@@ -120,6 +127,7 @@ export default function App() {
   const [isHome, setIsHome] = useState(true);
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [isOutlineOpen, setIsOutlineOpen] = useState(true);
+  const [pendingImport, setPendingImport] = useState(null); // { sourceName, wordCount, html, warning } | null
   const [isDocManagerOpen, setIsDocManagerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -587,6 +595,292 @@ export default function App() {
     setTimeout(() => setOllamaAction(null), 1000);
   }, []);
 
+  // ── File menu actions (Save As / Import / Export Project) ──
+  const runFileAction = useCallback(async (action) => {
+    const title = (currentDoc?.title || "مستند").trim() || "مستند";
+    const safeName = title.replace(/[\\/:*?"<>|]/g, "_"); // strip Windows-invalid filename chars
+
+    // SAVE AS
+    if (action === "save-as-md") {
+      if (!editor) return;
+      const md = htmlToMd(editor.getHTML());
+      const r = await saveTextAs(
+        { defaultName: `${safeName}.md`, ext: "md", label: "Markdown", content: md },
+        API_URL,
+      );
+      if (r.ok) showToast("تم الحفظ", "success");
+      else if (r.error) showToast(r.error, "error");
+      return;
+    }
+    if (action === "save-as-txt") {
+      if (!editor) return;
+      const txt = htmlToText(editor.getHTML());
+      const r = await saveTextAs(
+        { defaultName: `${safeName}.txt`, ext: "txt", label: "Plain Text", content: txt },
+        API_URL,
+      );
+      if (r.ok) showToast("تم الحفظ", "success");
+      else if (r.error) showToast(r.error, "error");
+      return;
+    }
+    if (action === "save-as-html") {
+      if (!editor) return;
+      const r = await saveHtmlAs(
+        { defaultName: `${safeName}.html`, htmlBody: editor.getHTML(), title },
+        API_URL,
+      );
+      if (r.ok) showToast("تم الحفظ", "success");
+      else if (r.error) showToast(r.error, "error");
+      return;
+    }
+    if (action === "save-as-docx") {
+      if (!editor) return;
+      const r = await saveDocxAs(
+        { defaultName: `${safeName}.docx`, htmlBody: editor.getHTML(), title },
+        API_URL,
+      );
+      if (r.ok) showToast("تم تصدير Word", "success");
+      else if (r.error) showToast(r.error, "error");
+      return;
+    }
+    if (action === "save-as-pdf") {
+      if (!editor) return;
+      // Wrap HTML in standalone RTL doc first (re-use the backend's wrapper).
+      try {
+        const wrapRes = await fetch(`${API_URL}/convert/wrap-html`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: editor.getHTML(), title }),
+        });
+        const { html } = await wrapRes.json();
+        const r = await savePdfAs({ defaultName: `${safeName}.pdf`, fullHtml: html });
+        if (r.ok) showToast("تم تصدير PDF", "success");
+        else if (r.error) showToast(r.error, "error");
+      } catch (err) {
+        showToast(err.message || "فشل تصدير PDF", "error");
+      }
+      return;
+    }
+
+    // IMPORT — pick file, then show options dialog
+    if (action === "import") {
+      // Use the file picker just to get a path (binary formats are read on the
+      // server side). For text formats we still read upfront so the renderer
+      // can parse them locally (markdown/html/json).
+      if (!window.electronAPI?.isElectron) {
+        showToast("الاستيراد متاح فقط في تطبيق سطح المكتب.", "error");
+        return;
+      }
+      const { canceled, filePaths } = await window.electronAPI.showOpenDialog({
+        title: "اختر ملفاً للاستيراد",
+        filters: [
+          { name: "كل المدعومة", extensions: ["docx", "md", "markdown", "txt", "html", "htm", "json", "pdf"] },
+          { name: "Word", extensions: ["docx"] },
+          { name: "PDF", extensions: ["pdf"] },
+          { name: "Markdown", extensions: ["md", "markdown"] },
+          { name: "نص", extensions: ["txt"] },
+          { name: "HTML", extensions: ["html", "htm"] },
+          { name: "Backup (JSON)", extensions: ["json"] },
+        ],
+        properties: ["openFile"],
+      });
+      if (canceled || !filePaths?.length) return;
+      const sourcePath = filePaths[0];
+      const name = sourcePath.split(/[\\/]/).pop();
+      const ext = (name.split(".").pop() || "").toLowerCase();
+      let html = "";
+      let warning = "";
+
+      if (ext === "docx") {
+        const r = await readDocxAsHtml(sourcePath, API_URL);
+        if (!r.ok) { showToast(r.error, "error"); return; }
+        html = r.html;
+        if (r.warnings?.length) {
+          warning = `بعض التنسيقات قد لا تظهر بدقة (${r.warnings.length} تنبيه).`;
+        }
+      } else if (ext === "pdf") {
+        const r = await readPdfAsHtml(sourcePath, API_URL);
+        if (!r.ok) { showToast(r.error, "error"); return; }
+        html = r.html;
+        warning = `استخراج النص من PDF قد ينتج تنسيقاً مشوّشاً (${r.pageCount} صفحة). يفضّل .docx أو .md للجودة الأفضل.`;
+      } else {
+        // Text formats — read content first.
+        const readRes = await fetch(`${API_URL}/import/read-file`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourcePath }),
+        });
+        if (!readRes.ok) {
+          const err = await readRes.json().catch(() => ({}));
+          showToast(err.error || "فشل قراءة الملف", "error");
+          return;
+        }
+        const { content } = await readRes.json();
+
+        if (ext === "json") {
+          try {
+            const json = JSON.parse(content);
+            if (json._format === "aragon-write-backup") {
+              const restore = await fetch(`${API_URL}/backup/import-project`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ json, target: "new" }),
+              });
+              const data = await restore.json();
+              if (restore.ok) {
+                showToast(`تم استيراد مشروع (${data.docCount} فصل)`, "success");
+                await loadProjects();
+                setIsHome(true);
+              } else {
+                showToast(data.error || "فشل الاستيراد", "error");
+              }
+              return;
+            }
+            // Not a backup JSON — treat as plain text
+            html = `<p>${content.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>`;
+          } catch {
+            showToast("ملف JSON غير صالح", "error");
+            return;
+          }
+        } else if (ext === "md" || ext === "markdown") {
+          html = await mdToHtml(content, API_URL);
+        } else if (ext === "txt") {
+          const paras = content.split(/\n\s*\n/).map((p) =>
+            `<p>${p.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>")}</p>`
+          );
+          html = paras.join("");
+        } else if (ext === "html" || ext === "htm") {
+          const m = /<body[^>]*>([\s\S]*)<\/body>/i.exec(content);
+          html = m ? m[1] : content;
+        } else {
+          showToast(`صيغة غير مدعومة: .${ext}`, "error");
+          return;
+        }
+      }
+
+      // Word count for the dialog header (rough)
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const wordCount = (tmp.textContent || "").trim().split(/\s+/).filter(Boolean).length;
+
+      setPendingImport({
+        sourceName: name,
+        wordCount,
+        html,
+        warning,
+      });
+      return;
+    }
+
+    // EXPORT PROJECT (JSON backup)
+    if (action === "export-project") {
+      if (!currentProjectId) return;
+      try {
+        const res = await fetch(`${API_URL}/backup/export-project?id=${encodeURIComponent(currentProjectId)}`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.error || "فشل تصدير المشروع", "error");
+          return;
+        }
+        const data = await res.json();
+        const json = JSON.stringify(data, null, 2);
+        const projectSafeName = (currentProject?.title || "project").replace(/[\\/:*?"<>|]/g, "_");
+        const r = await saveTextAs(
+          {
+            defaultName: `${projectSafeName}-backup.json`,
+            ext: "json",
+            label: "Aragon Backup",
+            content: json,
+          },
+          API_URL,
+        );
+        if (r.ok) showToast(`تم تصدير ${data.docs?.length || 0} فصل`, "success");
+        else if (r.error) showToast(r.error, "error");
+      } catch (err) {
+        showToast(err.message || "فشل التصدير", "error");
+      }
+      return;
+    }
+  }, [editor, currentDoc, currentProject, currentProjectId, showToast, loadProjects]);
+
+  // Called when ImportDialog confirms with the chosen target.
+  const confirmImport = useCallback(async ({ target, title: importTitle }) => {
+    if (!pendingImport) return;
+    const html = pendingImport.html;
+    setPendingImport(null);
+
+    if (target === "append" && editor) {
+      // Append to current document by inserting at the end.
+      editor.chain().focus().command(({ tr, dispatch }) => {
+        if (dispatch) {
+          const end = tr.doc.content.size;
+          tr.insertText("\n", end);
+        }
+        return true;
+      }).run();
+      editor.commands.insertContentAt(editor.state.doc.content.size, html);
+      showToast("تم الإلحاق", "success");
+      return;
+    }
+
+    if (target === "new-doc" && projectMode) {
+      // Create a new doc in current project, then load the imported content.
+      const doc = {
+        id: genId(),
+        title: importTitle,
+        content: html,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        const res = await fetch(`${API_URL}/fs/projects/${currentProjectId}/docs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(doc),
+        });
+        const saved = res.ok ? await res.json() : doc;
+        setDocuments((prev) => [...prev, saved]);
+        setCurrentDocId(saved.id);
+        loadProjects();
+        showToast(`تم استيراد ${importTitle}`, "success");
+      } catch {
+        showToast("فشل حفظ الفصل المستورد", "error");
+      }
+      return;
+    }
+
+    if (target === "new-project") {
+      // Create a new project, then create a doc inside it.
+      try {
+        const projRes = await fetch(`${API_URL}/fs/projects`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: importTitle }),
+        });
+        if (!projRes.ok) throw new Error("فشل إنشاء المشروع");
+        const project = await projRes.json();
+        const doc = {
+          id: genId(),
+          title: importTitle,
+          content: html,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await fetch(`${API_URL}/fs/projects/${project.id}/docs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(doc),
+        });
+        await loadProjects();
+        openProject(project.id);
+        showToast(`تم إنشاء «${importTitle}»`, "success");
+      } catch (err) {
+        showToast(err.message || "فشل الاستيراد", "error");
+      }
+      return;
+    }
+  }, [pendingImport, editor, projectMode, currentProjectId, openProject, loadProjects, showToast]);
+
   // Ensure at least one document exists (no-project mode, but only after leaving Home)
   useEffect(() => {
     if (!isHome && !projectMode && documents.length === 0) createDocument();
@@ -675,6 +969,13 @@ export default function App() {
           onCreate={createDocument}
           onOpenManager={() => setIsDocManagerOpen(true)}
           onUpdateTitle={updateDocTitle}
+        />
+
+        <FileMenu
+          onAction={runFileAction}
+          hasDoc={!!currentDoc}
+          hasProject={!!currentProjectId}
+          showDocx={true}
         />
 
         <div className="topbar__spacer" />
@@ -771,6 +1072,18 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           apiUrl={API_URL}
           onOllamaStatusChange={setOllamaStatus}
+        />
+      )}
+
+      {pendingImport && (
+        <ImportDialog
+          sourceName={pendingImport.sourceName}
+          wordCount={pendingImport.wordCount}
+          projectMode={projectMode}
+          currentDocTitle={currentDoc?.title}
+          warning={pendingImport.warning}
+          onConfirm={confirmImport}
+          onCancel={() => setPendingImport(null)}
         />
       )}
     </div>

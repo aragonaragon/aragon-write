@@ -26,6 +26,43 @@
 
 ## 🎯 ما تم في الجلسة السابقة
 
+### Save As + Import متعدد الصيغ — جاهز
+
+التطبيق صار يحفظ ويستورد بصيغ متعددة عبر حوارات نظام طبيعية.
+
+**Save As:**
+- `.docx` (Word) — `docx` library يبني Paragraph/TextRun من HTML
+- `.pdf` — Electron's `printToPDF()` على نافذة مخفية تحوي HTML المنسّق RTL
+- `.md` / `.html` / `.txt` — تحويل محلي محسّن (مع inline formatting)
+
+**Import:**
+- `.docx` — `mammoth.convertToHtml()` يرجع HTML نظيف
+- `.pdf` — `pdfjs-dist/legacy/build/pdf.mjs` يستخرج النص صفحة-صفحة (مع تحذير جودة)
+- `.md` / `.txt` / `.html` — محلي
+- **JSON backup** — استرداد مشروع كامل في مشروع جديد
+
+**حوار خيارات Import** — يسأل: فصل جديد / مشروع جديد / إلحاق بالحالي.
+
+**Dependencies جديدة (في `backend/package.json` فقط، exact versions):**
+- `docx` 9.6.1 — كتابة .docx
+- `mammoth` 1.12.0 — قراءة .docx
+- `pdfjs-dist` 5.7.284 — قراءة .pdf
+- `npm audit`: 0 ثغرات
+
+**البنية:**
+- `electron/preload.cjs` (جديد) — يكشف electronAPI عبر contextBridge
+- `electron/main.cjs` — IPC handlers: `dialog:save-as`, `dialog:open-import`, `pdf:export`
+- `backend/src/server.js` — 8 endpoints جديدة (`/convert/to-docx`, `/convert/from-docx`, `/convert/from-pdf`, `/convert/from-md`, `/convert/wrap-html`, `/export/write-file`, `/import/read-file`, `/backup/export-project`, `/backup/import-project`)
+- `frontend/src/lib/fileIO.js` (جديد) — غلاف للـ electronAPI + fetch
+- `frontend/src/components/FileMenu.jsx` (جديد) — قائمة "ملف ▾" في الـ topbar
+- `frontend/src/components/ImportDialog.jsx` (جديد) — حوار اختيار وجهة الاستيراد
+
+**ملاحظة على `.npmrc`:**
+- `min-release-age=7d` (مو `7 days` — npm 11.11 ما يفهم الـ space format صح، يصير `before=null` وكل npm install يفشل بـ "Invalid time value")
+- تم تصحيح الـ 4 ملفات (`~/.npmrc` + root + backend + frontend)
+
+---
+
 ### دعم API خارجي (Groq / OpenRouter / DeepSeek) — للأجهزة الضعيفة
 
 التطبيق صار يدعم OpenAI-compatible APIs كبديل عن Ollama المحلي.

@@ -6,9 +6,10 @@
  * Dist: npm run dist
  */
 
-const { app, BrowserWindow, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, shell, utilityProcess, ipcMain, dialog } = require("electron");
 const path = require("path");
 const http = require("http");
+const fs = require("fs/promises");
 
 const isDev = !app.isPackaged;
 const ROOT = path.join(__dirname, "..");
@@ -118,6 +119,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -158,6 +160,63 @@ async function createWindow() {
     mainWindow = null;
   });
 }
+
+// ─── IPC: file dialogs & PDF export ───────────────────────────────────────────
+
+// "Save As..." native dialog. Renderer passes filters and optional defaultPath;
+// we return the chosen filePath (or {canceled: true}).
+ipcMain.handle("dialog:save-as", async (_event, options = {}) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: options.title || "حفظ باسم",
+    defaultPath: options.defaultPath,
+    filters: options.filters || [],
+  });
+  return result;
+});
+
+// "Open..." native dialog. Returns filePaths (multi-select supported via
+// options.properties).
+ipcMain.handle("dialog:open-import", async (_event, options = {}) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: options.title || "اختر ملفاً",
+    filters: options.filters || [],
+    properties: options.properties || ["openFile"],
+  });
+  return result;
+});
+
+// PDF export using Chromium's built-in printToPDF — no extra dependency.
+// We spin up a hidden BrowserWindow with the user's HTML so the print
+// only captures the document, not the rest of the app UI.
+ipcMain.handle("pdf:export", async (_event, html, savePath) => {
+  if (!html || !savePath) return { ok: false, error: "محتوى أو مسار مفقود" };
+  let win = null;
+  try {
+    win = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+    const dataUrl = "data:text/html;charset=UTF-8," + encodeURIComponent(html);
+    await win.loadURL(dataUrl);
+    // Give web fonts a moment to load before printing.
+    await new Promise((r) => setTimeout(r, 250));
+    const pdfBuffer = await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "A4",
+      margins: { marginType: "default" },
+    });
+    await fs.writeFile(savePath, pdfBuffer);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message || "فشل تصدير PDF" };
+  } finally {
+    if (win && !win.isDestroyed()) win.destroy();
+  }
+});
 
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {

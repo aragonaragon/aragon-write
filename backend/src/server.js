@@ -5,6 +5,8 @@ import path from "path";
 import os from "os";
 import cors from "cors";
 import express from "express";
+// Heavy converters loaded lazily inside their handlers so cold start of the
+// backend (and the spellcheck-only path) doesn't pay the docx/pdf parse cost.
 
 const exec = promisify(execCb);
 
@@ -228,7 +230,8 @@ function isExternalProvider(providerConfig) {
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json({ limit: "4mb" }));
+// 50mb limit so backup imports and Save As bodies (HTML fragments) fit comfortably.
+app.use(express.json({ limit: "50mb" }));
 
 // ─── AI / Ollama Routes ───────────────────────────────────────────────────────
 app.get("/health", (_req, res) => res.json({ ok: true, ollama: OLLAMA_BASE, model: DEFAULT_MODEL }));
@@ -490,6 +493,590 @@ app.post("/ollama/start", async (_req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── File I/O & format conversion (Save As / Import) ─────────────────────────
+
+// A renderer-side "Save As..." flow uses Electron to pick a path, then asks us
+// to write the bytes. For text formats the body is `content` (utf-8 string);
+// for binary formats (future: .docx, .pdf via library), `contentBase64`.
+app.post("/export/write-file", async (req, res) => {
+  try {
+    const { savePath, content, contentBase64, encoding = "utf8" } = req.body || {};
+    if (!savePath) return res.status(400).json({ error: "savePath مطلوب" });
+    if (content == null && contentBase64 == null) {
+      return res.status(400).json({ error: "content أو contentBase64 مطلوب" });
+    }
+    const buffer = contentBase64
+      ? Buffer.from(contentBase64, "base64")
+      : Buffer.from(String(content), encoding);
+    // Reuse the atomic-write pattern used for project data so a crash
+    // mid-write doesn't truncate the user's existing file.
+    const tmp = `${savePath}.tmp`;
+    await fsp.writeFile(tmp, buffer);
+    await fsp.rename(tmp, savePath);
+    return res.json({ ok: true, bytes: buffer.length });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "فشل حفظ الملف" });
+  }
+});
+
+// Counterpart for Import: read a file from disk after the renderer picked it
+// via the OS dialog. Returns `content` for text, `contentBase64` for binary.
+app.post("/import/read-file", async (req, res) => {
+  try {
+    const { sourcePath, asBase64 = false } = req.body || {};
+    if (!sourcePath) return res.status(400).json({ error: "sourcePath مطلوب" });
+    const buf = await fsp.readFile(sourcePath);
+    if (asBase64) {
+      return res.json({ contentBase64: buf.toString("base64"), bytes: buf.length });
+    }
+    return res.json({ content: buf.toString("utf8"), bytes: buf.length });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "فشل قراءة الملف" });
+  }
+});
+
+// ─── Markdown ↔ HTML ──────────────────────────────────────────────────────────
+
+// A small Markdown → HTML parser (no deps).
+// Supports: ATX headings (# .. ######), fenced code blocks (```), inline code,
+// bold **/__,  italic */_, links [text](url), images ![alt](url), unordered
+// (-, *) and ordered (1.) lists, blockquotes (>), horizontal rules (---),
+// and paragraph breaks on blank lines. Keeps RTL-friendly: leaves Arabic
+// characters untouched.
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function mdInline(text) {
+  let s = escapeHtml(text);
+  // images BEFORE links so ![alt](url) is matched first
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  // inline code (single backticks, no nesting)
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  // bold (** or __)
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  // italic (single * or _) — avoid matching inside words
+  s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,!?:;)]|$)/g, "$1<em>$2</em>");
+  s = s.replace(/(^|[\s(])_([^_\n]+)_(?=[\s.,!?:;)]|$)/g, "$1<em>$2</em>");
+  return s;
+}
+
+function mdToHtml(md) {
+  const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  let i = 0;
+  let inCode = false;
+  let codeBuf = [];
+  let listStack = []; // array of { tag: "ul"|"ol" }
+
+  function closeLists(toDepth = 0) {
+    while (listStack.length > toDepth) {
+      const top = listStack.pop();
+      out.push(`</${top.tag}>`);
+    }
+  }
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code blocks
+    if (/^```/.test(line)) {
+      if (inCode) {
+        out.push(`<pre><code>${escapeHtml(codeBuf.join("\n"))}</code></pre>`);
+        inCode = false;
+        codeBuf = [];
+      } else {
+        closeLists();
+        inCode = true;
+        codeBuf = [];
+      }
+      i++; continue;
+    }
+    if (inCode) { codeBuf.push(line); i++; continue; }
+
+    // Blank line — break out of any list and skip
+    if (/^\s*$/.test(line)) {
+      closeLists();
+      i++; continue;
+    }
+
+    // Heading
+    const h = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (h) {
+      closeLists();
+      out.push(`<h${h[1].length}>${mdInline(h[2].trim())}</h${h[1].length}>`);
+      i++; continue;
+    }
+
+    // Horizontal rule
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+      closeLists();
+      out.push("<hr>");
+      i++; continue;
+    }
+
+    // Blockquote (one line at a time; consecutive lines wrapped together)
+    if (/^>\s?/.test(line)) {
+      closeLists();
+      const parts = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        parts.push(lines[i].replace(/^>\s?/, ""));
+        i++;
+      }
+      out.push(`<blockquote>${mdInline(parts.join(" "))}</blockquote>`);
+      continue;
+    }
+
+    // Unordered list
+    const ul = /^(\s*)([-*])\s+(.+)$/.exec(line);
+    if (ul) {
+      if (listStack[listStack.length - 1]?.tag !== "ul") {
+        closeLists();
+        listStack.push({ tag: "ul" });
+        out.push("<ul>");
+      }
+      out.push(`<li>${mdInline(ul[3])}</li>`);
+      i++; continue;
+    }
+
+    // Ordered list
+    const ol = /^(\s*)\d+\.\s+(.+)$/.exec(line);
+    if (ol) {
+      if (listStack[listStack.length - 1]?.tag !== "ol") {
+        closeLists();
+        listStack.push({ tag: "ol" });
+        out.push("<ol>");
+      }
+      out.push(`<li>${mdInline(ol[2])}</li>`);
+      i++; continue;
+    }
+
+    // Otherwise: paragraph — consume consecutive non-blank lines
+    closeLists();
+    const para = [line];
+    while (i + 1 < lines.length && !/^\s*$/.test(lines[i + 1])
+           && !/^(#{1,6}|>|```|[-*_])\s/.test(lines[i + 1])
+           && !/^\d+\.\s/.test(lines[i + 1])) {
+      i++;
+      para.push(lines[i]);
+    }
+    out.push(`<p>${mdInline(para.join(" "))}</p>`);
+    i++;
+  }
+  closeLists();
+  if (inCode) {
+    out.push(`<pre><code>${escapeHtml(codeBuf.join("\n"))}</code></pre>`);
+  }
+  return out.join("\n");
+}
+
+// Wrap converted HTML in a proper RTL Arabic document for stand-alone .html files.
+function wrapHtmlForExport(bodyHtml, title = "مستند") {
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>${escapeHtml(title)}</title>
+<style>
+  body { font-family: 'Amiri', 'Traditional Arabic', serif; max-width: 800px;
+         margin: 40px auto; padding: 20px; direction: rtl; text-align: right;
+         font-size: 18px; line-height: 2; color: #222; }
+  h1, h2, h3, h4, h5, h6 { line-height: 1.4; margin-top: 1.6em; }
+  blockquote { border-right: 4px solid #c8956c; padding: 4px 12px;
+               margin: 1em 0; color: #555; }
+  code { background: #f3f3f3; padding: 2px 4px; border-radius: 3px;
+         font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
+  pre { background: #f3f3f3; padding: 12px; border-radius: 6px;
+        overflow-x: auto; direction: ltr; text-align: left; }
+  ul, ol { padding-right: 24px; }
+  img { max-width: 100%; height: auto; }
+  a { color: #c8956c; }
+</style>
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+${bodyHtml}
+</body>
+</html>`;
+}
+
+// POST /convert/from-md — convert markdown text to HTML.
+app.post("/convert/from-md", (req, res) => {
+  try {
+    const { content = "", wrap = false, title = "مستند" } = req.body || {};
+    const body = mdToHtml(content);
+    return res.json({ html: wrap ? wrapHtmlForExport(body, title) : body });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /convert/wrap-html — wrap a body HTML fragment in a standalone RTL doc.
+// Used for Save As .html so the saved file opens nicely in a browser/Word.
+app.post("/convert/wrap-html", (req, res) => {
+  try {
+    const { body = "", title = "مستند" } = req.body || {};
+    return res.json({ html: wrapHtmlForExport(body, title) });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── DOCX / PDF converters (Phase 2) ──────────────────────────────────────────
+// We parse TipTap-shaped HTML (block-level elements + a small set of inline
+// tags) into docx Paragraph/TextRun structures. Not a general-purpose HTML
+// parser — assumes the input came from our editor.
+
+// Strip HTML entities back to plain characters for runs.
+function decodeEntities(s) {
+  return String(s)
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+// Walk inline HTML into a flat array of {text, bold, italic, code, href}.
+function parseInline(inlineHtml) {
+  const runs = [];
+  let i = 0;
+  const stack = [{ bold: false, italic: false, code: false, href: null }];
+  const top = () => stack[stack.length - 1];
+
+  while (i < inlineHtml.length) {
+    if (inlineHtml[i] !== "<") {
+      // Read text up to next tag
+      let j = inlineHtml.indexOf("<", i);
+      if (j === -1) j = inlineHtml.length;
+      const text = decodeEntities(inlineHtml.slice(i, j));
+      if (text) runs.push({ text, ...top() });
+      i = j;
+      continue;
+    }
+    // It's a tag
+    const close = inlineHtml.indexOf(">", i);
+    if (close === -1) break;
+    const tag = inlineHtml.slice(i, close + 1);
+    i = close + 1;
+
+    if (/^<br\s*\/?>$/i.test(tag)) {
+      runs.push({ text: "\n", ...top(), isBreak: true });
+      continue;
+    }
+
+    const isClosing = tag.startsWith("</");
+    const m = /^<\/?([a-z0-9]+)/i.exec(tag);
+    if (!m) continue;
+    const name = m[1].toLowerCase();
+
+    if (isClosing) {
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+
+    // Opening
+    const next = { ...top() };
+    if (name === "strong" || name === "b") next.bold = true;
+    else if (name === "em" || name === "i") next.italic = true;
+    else if (name === "code") next.code = true;
+    else if (name === "a") {
+      const hrefMatch = /\bhref\s*=\s*["']([^"']*)["']/i.exec(tag);
+      next.href = hrefMatch ? hrefMatch[1] : null;
+    } else if (tag.endsWith("/>")) {
+      // Self-closing — don't push
+      continue;
+    }
+    stack.push(next);
+  }
+
+  return runs;
+}
+
+// Split HTML into block-level chunks. Returns array of {type, content, level?}.
+function parseBlocks(html) {
+  const blocks = [];
+  const blockRe = /<(h[1-6]|p|ul|ol|blockquote|pre|hr)([^>]*)>([\s\S]*?)<\/\1>|<(hr)\s*\/?\s*>/gi;
+  let m;
+  let lastEnd = 0;
+  while ((m = blockRe.exec(html)) !== null) {
+    // Anything between blocks → treat as paragraph (rare)
+    const gap = html.slice(lastEnd, m.index).trim();
+    if (gap) blocks.push({ type: "p", content: gap });
+    const tag = (m[1] || m[4] || "").toLowerCase();
+    const inner = m[3] || "";
+    if (tag === "hr") {
+      blocks.push({ type: "hr" });
+    } else if (/^h[1-6]$/.test(tag)) {
+      blocks.push({ type: "heading", level: parseInt(tag[1], 10), content: inner });
+    } else if (tag === "ul" || tag === "ol") {
+      const items = [];
+      const itemRe = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+      let im;
+      while ((im = itemRe.exec(inner)) !== null) items.push(im[1]);
+      blocks.push({ type: tag, items });
+    } else {
+      blocks.push({ type: tag, content: inner });
+    }
+    lastEnd = blockRe.lastIndex;
+  }
+  const tail = html.slice(lastEnd).trim();
+  if (tail) blocks.push({ type: "p", content: tail });
+  return blocks;
+}
+
+// Build docx TextRun array from inline runs. `docx` library required as arg.
+function runsToTextRuns(inlineRuns, docx) {
+  return inlineRuns.map((r) => new docx.TextRun({
+    text: r.text,
+    bold: !!r.bold,
+    italics: !!r.italic,
+    font: r.code ? "Consolas" : undefined,
+    break: r.isBreak ? 1 : undefined,
+  }));
+}
+
+async function htmlToDocxBuffer(html, title) {
+  const docx = await import("docx");
+  const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Packer } = docx;
+  const blocks = parseBlocks(html);
+
+  const HEADING = {
+    1: HeadingLevel.HEADING_1, 2: HeadingLevel.HEADING_2, 3: HeadingLevel.HEADING_3,
+    4: HeadingLevel.HEADING_4, 5: HeadingLevel.HEADING_5, 6: HeadingLevel.HEADING_6,
+  };
+
+  const baseParagraph = (children, opts = {}) =>
+    new Paragraph({
+      children,
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      ...opts,
+    });
+
+  const children = [];
+  // Title at top
+  if (title) {
+    children.push(new Paragraph({
+      heading: HeadingLevel.TITLE,
+      bidirectional: true,
+      alignment: AlignmentType.RIGHT,
+      children: [new TextRun({ text: title, bold: true, size: 36 })],
+    }));
+  }
+
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      children.push(baseParagraph(
+        runsToTextRuns(parseInline(block.content), docx),
+        { heading: HEADING[block.level] }
+      ));
+    } else if (block.type === "p") {
+      children.push(baseParagraph(runsToTextRuns(parseInline(block.content), docx)));
+    } else if (block.type === "blockquote") {
+      children.push(baseParagraph(
+        runsToTextRuns(parseInline(block.content), docx),
+        { indent: { right: 720 }, style: "Quote" }
+      ));
+    } else if (block.type === "pre") {
+      // Treat pre as a single mono paragraph
+      const text = decodeEntities(block.content.replace(/<[^>]+>/g, ""));
+      children.push(new Paragraph({
+        bidirectional: true,
+        alignment: AlignmentType.LEFT,
+        children: [new TextRun({ text, font: "Consolas" })],
+      }));
+    } else if (block.type === "ul" || block.type === "ol") {
+      for (const item of block.items) {
+        children.push(baseParagraph(
+          runsToTextRuns(parseInline(item), docx),
+          {
+            bullet: block.type === "ul" ? { level: 0 } : undefined,
+            numbering: block.type === "ol" ? { reference: "ordered-list", level: 0 } : undefined,
+          }
+        ));
+      }
+    } else if (block.type === "hr") {
+      children.push(new Paragraph({ children: [new TextRun({ text: "—".repeat(20) })] }));
+    }
+  }
+
+  const doc = new Document({
+    creator: "Aragon Write",
+    title: title || "مستند",
+    description: "Exported by Aragon Write",
+    numbering: {
+      config: [{
+        reference: "ordered-list",
+        levels: [{
+          level: 0, format: "decimal", text: "%1.", alignment: AlignmentType.START,
+          style: { paragraph: { indent: { right: 360 } } },
+        }],
+      }],
+    },
+    sections: [{
+      properties: { },
+      children,
+    }],
+  });
+  return Packer.toBuffer(doc);
+}
+
+// POST /convert/to-docx — convert HTML body to a .docx file written to savePath.
+app.post("/convert/to-docx", async (req, res) => {
+  try {
+    const { html = "", title = "مستند", savePath } = req.body || {};
+    if (!savePath) return res.status(400).json({ error: "savePath مطلوب" });
+    if (!html.trim()) return res.status(400).json({ error: "محتوى فارغ" });
+    const buffer = await htmlToDocxBuffer(html, title);
+    const tmp = `${savePath}.tmp`;
+    await fsp.writeFile(tmp, buffer);
+    await fsp.rename(tmp, savePath);
+    return res.json({ ok: true, bytes: buffer.length });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "فشل تصدير DOCX" });
+  }
+});
+
+// POST /convert/from-docx — read a .docx file and convert to TipTap-ready HTML.
+app.post("/convert/from-docx", async (req, res) => {
+  try {
+    const { sourcePath } = req.body || {};
+    if (!sourcePath) return res.status(400).json({ error: "sourcePath مطلوب" });
+    const mammoth = (await import("mammoth")).default || (await import("mammoth"));
+    const buffer = await fsp.readFile(sourcePath);
+    const result = await mammoth.convertToHtml({ buffer });
+    // mammoth uses <p> for paragraphs and TipTap accepts that directly.
+    // Strip <p></p> wrappers around images and a few other quirks if needed later.
+    return res.json({
+      html: result.value || "",
+      warnings: (result.messages || []).map((m) => m.message).slice(0, 5),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "فشل قراءة DOCX" });
+  }
+});
+
+// POST /convert/from-pdf — extract plain text from a PDF, page by page.
+app.post("/convert/from-pdf", async (req, res) => {
+  try {
+    const { sourcePath } = req.body || {};
+    if (!sourcePath) return res.status(400).json({ error: "sourcePath مطلوب" });
+    // pdfjs-dist is ESM; import the legacy build that works in Node.
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const data = new Uint8Array(await fsp.readFile(sourcePath));
+    const pdf = await pdfjs.getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+    const pages = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      // Items have .str + a `hasEOL` marker on newer pdfjs versions; fall back
+      // to inserting spaces between runs and double newlines between blocks.
+      let text = "";
+      let lastY = null;
+      for (const item of tc.items) {
+        if (typeof item.str !== "string") continue;
+        if (lastY != null && item.transform && Math.abs(item.transform[5] - lastY) > 4) {
+          text += "\n";
+        }
+        text += item.str;
+        if (item.hasEOL) text += "\n";
+        lastY = item.transform ? item.transform[5] : lastY;
+      }
+      pages.push({ page: p, text: text.trim() });
+    }
+    const plainText = pages.map((p) => p.text).join("\n\n").trim();
+    // Wrap in <p> blocks for TipTap consumption.
+    const html = plainText
+      .split(/\n\s*\n/)
+      .map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
+      .join("");
+    return res.json({ html, plainText, pageCount: pdf.numPages });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "فشل قراءة PDF" });
+  }
+});
+
+// ─── Project backup (JSON) ────────────────────────────────────────────────────
+
+// GET /backup/export-project?id=PROJECT_ID — bundle a whole project (metadata
+// + all docs with full content) into one JSON blob the user can stash as a
+// backup or move between machines.
+app.get("/backup/export-project", async (req, res) => {
+  try {
+    const id = sanitizeId(req.query.id || "");
+    if (!id) return res.status(400).json({ error: "id مطلوب" });
+    const folder = await findProjectFolder(id);
+    if (!folder) return res.status(404).json({ error: "Project not found" });
+    const meta = JSON.parse(await fsp.readFile(path.join(folder, "_project.json"), "utf-8"));
+    const files = await fsp.readdir(folder);
+    const docs = [];
+    for (const f of files) {
+      if (!f.endsWith(".json") || f === "_project.json") continue;
+      try {
+        docs.push(JSON.parse(await fsp.readFile(path.join(folder, f), "utf-8")));
+      } catch {}
+    }
+    docs.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    return res.json({
+      _format: "aragon-write-backup",
+      _version: 1,
+      exportedAt: new Date().toISOString(),
+      project: meta,
+      docs,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /backup/import-project — restore a project from a backup JSON.
+// Body: { json: <full backup object>, target: "new" }
+// (Only "new" supported for now — always creates a fresh project. Merge could
+// be added later if a user wants to overlay onto an existing project.)
+app.post("/backup/import-project", async (req, res) => {
+  try {
+    const { json, target = "new" } = req.body || {};
+    if (!json || !json.project || !Array.isArray(json.docs)) {
+      return res.status(400).json({ error: "ملف النسخة الاحتياطية غير صالح" });
+    }
+    if (target !== "new") {
+      return res.status(400).json({ error: "حالياً يُدعم استيراد كمشروع جديد فقط" });
+    }
+    // Always assign fresh ids so we don't clash with an existing project that
+    // happens to share the original id.
+    const newId = genId();
+    const projectDir = path.join(STORAGE_ROOT, newId);
+    await ensureDir(projectDir);
+    const now = new Date().toISOString();
+    const meta = {
+      id: newId,
+      title: json.project.title || "مشروع مستورد",
+      gradient: json.project.gradient || null,
+      docCount: json.docs.length,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await writeAtomic(path.join(projectDir, "_project.json"), JSON.stringify(meta, null, 2));
+    for (const doc of json.docs) {
+      const docId = genId();
+      const docOut = {
+        id: docId,
+        title: doc.title || "بدون عنوان",
+        content: doc.content || "<p></p>",
+        createdAt: doc.createdAt || now,
+        updatedAt: now,
+      };
+      await writeAtomic(path.join(projectDir, `${docId}.json`), JSON.stringify(docOut, null, 2));
+    }
+    return res.json({ ok: true, projectId: newId, docCount: json.docs.length });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
