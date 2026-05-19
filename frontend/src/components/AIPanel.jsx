@@ -3,7 +3,7 @@ import {
   X, Sparkles, RefreshCw, Minimize2, Maximize2,
   ArrowRight, Languages, CheckCircle, Lightbulb,
   FileText, Type, Send, Copy, Check, PenLine,
-  ChevronLeft,
+  ChevronLeft, Video,
 } from "lucide-react";
 
 // Strip leftover Markdown artifacts from model output (some models keep emitting
@@ -42,6 +42,7 @@ const QUICK_ACTIONS = [
   { id: "ideas", label: "أفكار ومقترحات", icon: Lightbulb, requiresSelection: false },
   { id: "outline", label: "اقتراح مخطط", icon: FileText, requiresSelection: false },
   { id: "titles", label: "اقتراح عناوين", icon: Type, requiresSelection: false },
+  { id: "youtube_script", label: "سكربت يوتيوب", icon: Video, requiresSelection: false },
 ];
 
 function useStream(apiUrl) {
@@ -136,6 +137,22 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
     return { selected, full };
   };
 
+  // Resolve which model + provider to pass to the backend, based on current settings.
+  // Ollama mode uses the local model name; external mode uses the API model + providerConfig.
+  const resolveProvider = () => {
+    if (settings.provider === "openai_compat") {
+      return {
+        model: settings.apiModel,
+        providerConfig: {
+          type: "openai_compat",
+          baseUrl: settings.apiBaseUrl,
+          apiKey: settings.apiKey,
+        },
+      };
+    }
+    return { model: settings.model, providerConfig: null };
+  };
+
   const runAction = async (actionId) => {
     if (!editor) return;
     const { selected, full } = getSelectionOrDoc();
@@ -147,7 +164,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
       action: actionId,
       text,
       instruction,
-      model: settings.model,
+      ...resolveProvider(),
     });
   };
 
@@ -217,7 +234,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
       text: message,
       instruction: message,
       docContent,
-      model: settings.model,
+      ...resolveProvider(),
     });
 
     // After streaming, move result to chat messages

@@ -43,6 +43,11 @@ const DEFAULT_SETTINGS = {
   zoom: 100,
   writingGoal: 0,
   typewriterMode: false,
+  // External AI provider (for weak devices / cloud usage)
+  provider: "ollama",      // "ollama" | "openai_compat"
+  apiBaseUrl: "",
+  apiKey: "",
+  apiModel: "",
 };
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -157,6 +162,19 @@ export default function App() {
 
   // Apply theme
   useEffect(() => { document.documentElement.setAttribute("data-theme", settings.theme); }, [settings.theme]);
+
+  // Auto-disable spellcheck when switching to an external API provider.
+  // Per-word requests to a paid API would be expensive; we keep spellcheck local-only.
+  useEffect(() => {
+    if (settings.provider === "openai_compat" && settings.spellcheckEnabled) {
+      setSettings((prev) => {
+        const next = { ...prev, spellcheckEnabled: false };
+        saveSettings(next);
+        return next;
+      });
+      showToast("التدقيق الإملائي عُطّل تلقائياً — يعمل محلياً فقط", "info", 5000);
+    }
+  }, [settings.provider]); // eslint-disable-line
 
   // Ollama status
   useEffect(() => {
@@ -596,6 +614,7 @@ export default function App() {
           theme={settings.theme}
           onCycleTheme={cycleTheme}
           ollamaStatus={ollamaStatus}
+          settings={settings}
         />
         {isSettingsOpen && (
           <Settings
@@ -706,7 +725,8 @@ export default function App() {
         stats={stats}
         issueCount={issueCount}
         ollamaStatus={ollamaStatus}
-        model={settings.model}
+        model={settings.provider === "openai_compat" ? settings.apiModel : settings.model}
+        settings={settings}
         docCount={documents.length}
         sessionWords={sessionWords}
         writingGoal={settings.writingGoal || 0}

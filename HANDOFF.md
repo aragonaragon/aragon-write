@@ -26,6 +26,36 @@
 
 ## 🎯 ما تم في الجلسة السابقة
 
+### دعم API خارجي (Groq / OpenRouter / DeepSeek) — للأجهزة الضعيفة
+
+التطبيق صار يدعم OpenAI-compatible APIs كبديل عن Ollama المحلي.
+
+**كيف يشتغل:**
+- في **Settings → مصدر الذكاء الاصطناعي** المستخدم يختار بين "محلي (Ollama)" و"API خارجي"
+- 3 إعدادات مسبقة بضغطة زر: Groq / OpenRouter / DeepSeek (تعبّي Base URL و model تلقائياً)
+- API Key يحفظ في localStorage (غير مشفّر — مقبول لتطبيق محلي، تنبيه ظاهر للمستخدم)
+- زر "اختبار الاتصال" يضرب `/models` ويرجع نتيجة فورية
+- زر "جلب قائمة الموديلات" يعبّي dropdown بالموديلات المتاحة من الـ API
+
+**ملفات مفتاحية:**
+- `backend/src/server.js`:
+  - `openaiCompatGenerate()` — POST `/chat/completions` بصيغة OpenAI
+  - `aiGenerate()` — dispatcher يختار بين Ollama و OpenAI
+  - `/health/provider` (POST) — اختبار اتصال
+  - `/models/external` (POST) — جلب الموديلات
+  - الـ streaming parser يحوّل صيغة OpenAI SSE (`data: {choices:[{delta:{content}}]}`) إلى الصيغة الموحّدة `data: {text}` للفرونت
+- `frontend/src/lib/provider.js` — helpers (`getProviderName`, `isExternal`, `getActiveModel`)
+- `frontend/src/components/Settings.jsx` — قسم Provider الكامل + `PROVIDER_PRESETS`
+- `frontend/src/components/AIPanel.jsx` — `resolveProvider()` يمرّر providerConfig مع كل طلب
+- StatusBar + Home — يبيّنون اسم المزود الحالي ("Groq متصل" بدل "Ollama متصل")
+
+**السلوك المحمي:**
+- التدقيق الإملائي يتعطّل تلقائياً في وضع API (تكلفة عالية لو كل كلمة تروح للسحابة)
+- `/check-word*` ترجع 503 لو `providerConfig.type === "openai_compat"` (safety net)
+- اللي يجي بـ Ollama (الافتراضي) ما يتأثر — كل التعديلات opt-in
+
+---
+
 ### Commit `a60a61b` (مدفوع لـ GitHub)
 
 **1. تبديل الموديل الافتراضي:** `qwen2.5:7b` → `gemma4:e4b`

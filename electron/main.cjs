@@ -162,7 +162,10 @@ async function createWindow() {
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   createSplash();
-  startBackend();
+  // In dev, concurrently already runs the backend via `npm run dev --workspace backend`
+  // with --watch. Spawning a second instance here causes EADDRINUSE and prevents
+  // hot-reload of backend changes. Only spawn the bundled backend in packaged builds.
+  if (!isDev) startBackend();
   await waitForBackend();
   await createWindow();
 });

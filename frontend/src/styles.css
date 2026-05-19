@@ -1256,6 +1256,95 @@ button, input, textarea, select {
 
 .settings-select:focus { outline: none; border-color: var(--border-focus); }
 
+/* ─── Provider (Ollama vs External API) ─────────────────────────────────────── */
+.provider-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.provider-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition), color var(--transition);
+}
+
+.provider-tab:hover {
+  color: var(--text-primary);
+}
+
+.provider-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.provider-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.provider-preset {
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition);
+}
+
+.provider-preset:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.provider-preset.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.provider-key {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.provider-key .settings-input {
+  flex: 1;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.provider-key .btn-icon {
+  flex-shrink: 0;
+  width: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
 /* Theme selector */
 .theme-options {
   display: flex;

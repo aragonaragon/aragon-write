@@ -1,8 +1,11 @@
-import { FileText, Cpu, AlertCircle, Target, Play, Power } from "lucide-react";
+import { FileText, Cpu, AlertCircle, Target, Play, Power, Cloud } from "lucide-react";
+import { getProviderStatusLabel, isExternal } from "../lib/provider";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings }) {
   const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
   const goalReached = writingGoal > 0 && stats.words >= writingGoal;
+  const external = isExternal(settings);
+  const statusLabel = getProviderStatusLabel(settings, ollamaStatus);
 
   return (
     <footer className="statusbar">
@@ -47,13 +50,11 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       <div className="statusbar__spacer" />
 
       <div className="statusbar__item" style={{ gap: 6 }}>
+        {external && <Cloud size={11} style={{ color: "var(--text-muted)" }} />}
         <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
-        <span>
-          {ollamaStatus === "online" ? "Ollama متصل" :
-           ollamaStatus === "error" ? "Ollama متوقف" :
-           "جاري الفحص..."}
-        </span>
-        {ollamaStatus !== "online" && (
+        <span>{statusLabel}</span>
+        {/* Start/kill Ollama controls only make sense in local mode */}
+        {!external && ollamaStatus !== "online" && (
           <button
             className="btn-icon"
             onClick={onStartOllama}
@@ -64,7 +65,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
             <Play size={11} />
           </button>
         )}
-        {ollamaStatus === "online" && (
+        {!external && ollamaStatus === "online" && (
           <button
             className="btn-icon"
             onClick={onKillOllama}

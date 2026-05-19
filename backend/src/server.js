@@ -89,13 +89,30 @@ const ACTION_PROMPTS = {
   translate_ar: (t) =>
     `ترجم النص التالي إلى العربية الفصحى الجميلة. اكتب فقط الترجمة بدون أي مقدمة:\n\n${t}`,
   fix_grammar: (t) =>
-    `صحّح الأخطاء الإملائية والنحوية في النص التالي. اكتب فقط النص المصحح بدون أي مقدمة أو شرح:\n\n${t}`,
+    `صحّح الأخطاء الإملائية والنحوية وعلامات الترقيم في النص التالي فقط. مهم جداً: لا تغيّر الأسلوب ولا الكلمات ولا تعيد الصياغة — احتفظ بكل شي مثل ما هو إلا الأخطاء. اكتب فقط النص المصحّح بدون أي مقدمة أو شرح:\n\n${t}`,
   ideas: (t) =>
-    `بناءً على النص التالي، اقترح 5 أفكار إبداعية لتطوير الحبكة أو الشخصيات. قدّم كل فكرة في سطر واحد واضح:\n\n${t}`,
+    `بناءً على النص التالي، اقترح 5 أفكار إبداعية للتطوير والإضافة عليه — حسب نوع النص (رواية، مقال، تقرير، شعر، أو غيره). كل فكرة في سطر واحد واضح، بدون أرقام مزخرفة ولا تنسيق Markdown ولا نجمات. ابدأ كل سطر بشرطة - فقط:\n\n${t}`,
   outline: (t) =>
     `اقترح مخططاً تفصيلياً لقصة أو مقال بناءً على الموضوع التالي. قدّم المخطط بشكل منظم:\n\n${t}`,
   titles: (t) =>
     `اقترح 5 عناوين جذابة وإبداعية لنص يتناول الموضوع التالي. قدّم كل عنوان في سطر واحد:\n\n${t}`,
+  youtube_script: (t) =>
+    `حوّل قائمة الأفكار التالية إلى سكربت فيديو يوتيوب كامل باللغة العربية، جاهز للقراءة أمام الكاميرا.
+
+التعليمات:
+- ابدأ بـ [المقدمة] — جذابة وقصيرة (15-30 ثانية)، تذكر للمشاهد وش راح يستفيد وتحفّزه يكمل
+- لكل فكرة في القائمة، اكتب قسماً مستقلاً بهذا الشكل:
+  [الفقرة N: عنوان مختصر]
+  ثم اشرح الفكرة بتفصيل (1-2 دقيقة قراءة لكل قسم)، مع أمثلة ملموسة أو قصص قصيرة عند الإمكان، وانتقال طبيعي للقسم اللي بعده
+- اختم بـ [الخاتمة] — تلخّص أهم النقاط، وتدعو للايك والاشتراك والتعليق
+- استخدم نبرة محادثة طبيعية، كأنك تكلم صديق وجهاً لوجه
+- لا تستخدم تنسيق Markdown (لا **نجمات** ولا ### عناوين ولا --- فواصل) — العناوين بين قوسين مربعين فقط [مثل هذا]
+- لا تكتب توجيهات إخراج أو حركات كاميرا، النص المنطوق فقط
+
+قائمة الأفكار:
+${t}
+
+السكربت:`,
   chat: (docContent, message) => {
     const hasDoc = docContent && docContent.trim().length > 0;
     const docBlock = hasDoc
@@ -136,14 +153,77 @@ function parseWordCheck(rawOutput, originalWord) {
   if (!suggestion || suggestion === originalWord) return { correct: true };
   return { correct: false, suggestion };
 }
-async function ollamaGenerate(prompt, model, stream = false) {
+async function ollamaGenerate(prompt, model, stream = false, options = {}) {
+  // num_ctx: Ollama's default is 2048 — too small for long prompts + long outputs.
+  // 8192 lets us handle full scripts comfortably on most models.
   const response = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, prompt, stream, options: { temperature: 0.7, num_predict: 2048 } }),
+    body: JSON.stringify({
+      model,
+      prompt,
+      stream,
+      options: { temperature: 0.7, num_predict: 4096, num_ctx: 8192, ...options },
+    }),
   });
   if (!response.ok) throw new Error(await response.text() || "Ollama connection failed");
   return response;
+}
+
+// ─── External (OpenAI-compatible) provider ───────────────────────────────────
+// Works with Groq, OpenRouter, DeepSeek, Together, Mistral API, LM Studio, etc.
+// All send chat-completion style requests; streaming uses OpenAI SSE format.
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || "").trim().replace(/\/+$/, "");
+}
+
+async function openaiCompatGenerate({ prompt, model, stream, baseUrl, apiKey }) {
+  const url = `${normalizeBaseUrl(baseUrl)}/chat/completions`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey || ""}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      stream: !!stream,
+      temperature: 0.7,
+      max_tokens: 4096,
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    const code = response.status;
+    // Friendly Arabic error messages for the common cases.
+    let msg = body || "فشل الاتصال بالخدمة الخارجية";
+    if (code === 401 || code === 403) msg = "مفتاح API غير صالح أو منتهي.";
+    else if (code === 404) msg = "Base URL غير صحيح أو الموديل غير موجود.";
+    else if (code === 429) msg = "تجاوزت الحد المسموح — جرّب بعد قليل.";
+    else if (code >= 500) msg = "الخدمة الخارجية معطّلة حالياً.";
+    throw new Error(msg);
+  }
+  return response;
+}
+
+// Unified dispatcher — switches between Ollama (local) and OpenAI-compat (cloud).
+async function aiGenerate({ prompt, model, stream = false, providerConfig = null }) {
+  if (providerConfig && providerConfig.type === "openai_compat") {
+    return openaiCompatGenerate({
+      prompt,
+      model,
+      stream,
+      baseUrl: providerConfig.baseUrl,
+      apiKey: providerConfig.apiKey,
+    });
+  }
+  return ollamaGenerate(prompt, model, stream);
+}
+
+// Returns true if the given config targets the external provider.
+function isExternalProvider(providerConfig) {
+  return !!(providerConfig && providerConfig.type === "openai_compat");
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -162,23 +242,86 @@ app.get("/models", async (_req, res) => {
   } catch { return res.status(502).json({ error: "Ollama not running", models: [] }); }
 });
 
+// POST /health/provider — test connection to an external OpenAI-compat API.
+// Body: { baseUrl, apiKey }. Returns {ok:true, models?} or {ok:false, error}.
+// Uses the /models endpoint as the cheapest probe (no token usage).
+app.post("/health/provider", async (req, res) => {
+  const baseUrl = normalizeBaseUrl(req.body?.baseUrl);
+  const apiKey = req.body?.apiKey || "";
+  if (!baseUrl) return res.status(400).json({ ok: false, error: "Base URL مطلوب" });
+  try {
+    const r = await fetch(`${baseUrl}/models`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      if (r.status === 401 || r.status === 403) msg = "مفتاح API غير صالح أو منتهي.";
+      else if (r.status === 404) msg = "المسار غير صحيح — تأكد من Base URL.";
+      else if (r.status === 429) msg = "تجاوزت الحد المسموح حالياً.";
+      else if (r.status >= 500) msg = "الخدمة الخارجية معطّلة حالياً.";
+      return res.json({ ok: false, error: msg });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.json({ ok: false, error: err.message || "تعذّر الوصول إلى الخدمة. تأكد من الاتصال بالإنترنت." });
+  }
+});
+
+// POST /models/external — list models from an OpenAI-compat provider.
+// Body: { baseUrl, apiKey }. Returns {models: [{name, ...}]}.
+app.post("/models/external", async (req, res) => {
+  const baseUrl = normalizeBaseUrl(req.body?.baseUrl);
+  const apiKey = req.body?.apiKey || "";
+  if (!baseUrl) return res.status(400).json({ error: "Base URL مطلوب", models: [] });
+  try {
+    const r = await fetch(`${baseUrl}/models`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      if (r.status === 401 || r.status === 403) msg = "مفتاح API غير صالح أو منتهي.";
+      else if (r.status === 404) msg = "المسار غير صحيح — تأكد من Base URL.";
+      return res.status(502).json({ error: msg, models: [] });
+    }
+    const data = await r.json();
+    // OpenAI-style: { object: "list", data: [{ id, ... }] }
+    // Some providers (Ollama compat): may use different shape — fall back to data.data or data.models.
+    const list = Array.isArray(data?.data) ? data.data
+               : Array.isArray(data?.models) ? data.models
+               : [];
+    const models = list.map((m) => ({
+      name: m.id || m.name || "",
+      owned_by: m.owned_by || m.provider || "",
+    })).filter((m) => m.name);
+    return res.json({ models });
+  } catch (err) {
+    return res.status(502).json({ error: err.message || "تعذّر جلب الموديلات.", models: [] });
+  }
+});
+
 app.post("/ai/action", async (req, res) => {
-  const { text = "", action = "improve", instruction = "", model = DEFAULT_MODEL } = req.body;
+  const { text = "", action = "improve", instruction = "", model = DEFAULT_MODEL, providerConfig = null } = req.body;
   if (!text.trim()) return res.status(400).json({ error: "النص مطلوب" });
   const promptFn = ACTION_PROMPTS[action];
   if (!promptFn) return res.status(400).json({ error: `إجراء غير معروف: ${action}` });
   const prompt = instruction ? `${promptFn(text)}\n\nتعليمات إضافية: ${instruction}` : promptFn(text);
   try {
-    const response = await ollamaGenerate(prompt, model, false);
+    const response = await aiGenerate({ prompt, model, stream: false, providerConfig });
     const data = await response.json();
-    return res.json({ result: data.response || "" });
+    // Normalize response: Ollama returns {response}; OpenAI returns {choices:[{message:{content}}]}
+    const result =
+      data.response ??
+      data.choices?.[0]?.message?.content ??
+      "";
+    return res.json({ result });
   } catch (error) {
-    return res.status(502).json({ error: error.message || "فشل الاتصال بـ Ollama" });
+    const msg = error.message || (isExternalProvider(providerConfig) ? "فشل الاتصال بالخدمة الخارجية" : "فشل الاتصال بـ Ollama");
+    return res.status(502).json({ error: msg });
   }
 });
 
 app.post("/ai/stream", async (req, res) => {
-  const { text = "", action = "improve", instruction = "", model = DEFAULT_MODEL, docContent = "" } = req.body;
+  const { text = "", action = "improve", instruction = "", model = DEFAULT_MODEL, docContent = "", providerConfig = null } = req.body;
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -195,21 +338,39 @@ app.post("/ai/stream", async (req, res) => {
     }
     prompt = instruction ? `${promptFn(text)}\n\nتعليمات إضافية: ${instruction}` : promptFn(text);
   }
+  const external = isExternalProvider(providerConfig);
   try {
-    const ollamaRes = await ollamaGenerate(prompt, model, true);
-    const reader = ollamaRes.body.getReader();
+    const upstream = await aiGenerate({ prompt, model, stream: true, providerConfig });
+    const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed.response) res.write(`data: ${JSON.stringify({ text: parsed.response })}\n\n`);
-          if (parsed.done) res.write("data: [DONE]\n\n");
-        } catch {}
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || ""; // keep last partial line for next chunk
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (external) {
+          // OpenAI SSE: lines start with "data: " and end with "data: [DONE]"
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") { res.write("data: [DONE]\n\n"); continue; }
+          try {
+            const parsed = JSON.parse(payload);
+            const chunk = parsed.choices?.[0]?.delta?.content;
+            if (chunk) res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+          } catch {}
+        } else {
+          // Ollama: one JSON object per line — {"response":"...", "done":bool}
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.response) res.write(`data: ${JSON.stringify({ text: parsed.response })}\n\n`);
+            if (parsed.done) res.write("data: [DONE]\n\n");
+          } catch {}
+        }
       }
     }
   } catch (error) {
@@ -230,6 +391,12 @@ const WORD_CHECK_PROMPT = `هل هذه الكلمة مكتوبة بشكل صحي
 `;
 
 app.post("/check-word", async (req, res) => {
+  // Spellcheck is intentionally Ollama-only (sending a request per word to a
+  // paid API would be expensive). Frontend should already disable it in
+  // external-provider mode; this is a safety net.
+  if (isExternalProvider(req.body?.providerConfig)) {
+    return res.status(503).json({ error: "التدقيق الإملائي يعمل محلياً فقط (Ollama).", correct: true });
+  }
   const rawWord = typeof req.body?.word === "string" ? req.body.word : "";
   const word = normalizeWord(rawWord);
   if (!word || !isArabicWord(word) || isNumberOnly(word)) return res.json({ correct: true });
@@ -246,6 +413,9 @@ app.post("/check-word", async (req, res) => {
 
 // POST /check-words — batch spellcheck (replaces N+1 /check-word calls)
 app.post("/check-words", async (req, res) => {
+  if (isExternalProvider(req.body?.providerConfig)) {
+    return res.status(503).json({ error: "التدقيق الإملائي يعمل محلياً فقط (Ollama)." });
+  }
   const words = Array.isArray(req.body?.words) ? req.body.words : [];
   const model = req.body?.model || DEFAULT_MODEL;
   if (words.length === 0) return res.json([]);

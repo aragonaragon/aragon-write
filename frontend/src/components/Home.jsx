@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { BookOpen, BookPlus, FileText, Trash2, Sun, Moon, Palette, Settings as SettingsIcon, Clock } from "lucide-react";
+import { BookOpen, BookPlus, FileText, Trash2, Sun, Moon, Palette, Settings as SettingsIcon, Clock, Cloud } from "lucide-react";
+import { getProviderName, isExternal } from "../lib/provider";
 
 const GRADIENTS = [
   "linear-gradient(135deg,#667eea,#764ba2)",
@@ -41,7 +42,10 @@ export default function Home({
   theme,
   onCycleTheme,
   ollamaStatus,
+  settings,
 }) {
+  const providerName = getProviderName(settings);
+  const external = isExternal(settings);
   const [creatingNew, setCreatingNew] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -72,7 +76,12 @@ export default function Home({
             <div className="home__brand-name">أرغون رايت</div>
             <div className="home__brand-tag">
               <span className={`home__dot home__dot--${ollamaStatus === "online" ? "on" : ollamaStatus === "checking" ? "check" : "off"}`} />
-              {ollamaStatus === "online" ? "المساعد الذكي جاهز" : ollamaStatus === "checking" ? "جارٍ التحقق..." : "بدون مساعد ذكي"}
+              {external && <Cloud size={11} style={{ opacity: 0.7 }} />}
+              {ollamaStatus === "online"
+                ? `${providerName} — المساعد الذكي جاهز`
+                : ollamaStatus === "checking"
+                ? "جارٍ التحقق..."
+                : `${providerName} — غير متصل`}
             </div>
           </div>
         </div>

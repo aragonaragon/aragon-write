@@ -1,5 +1,28 @@
 import { useEffect, useState } from "react";
-import { X, RefreshCw, CheckCircle, AlertCircle, Power, Play } from "lucide-react";
+import { X, RefreshCw, CheckCircle, AlertCircle, Power, Play, Eye, EyeOff, Cloud, HardDrive, Plug } from "lucide-react";
+
+// Built-in presets for popular OpenAI-compatible providers.
+// Users can edit Base URL/Model after applying, or fill them in manually.
+const PROVIDER_PRESETS = {
+  groq: {
+    label: "Groq",
+    baseUrl: "https://api.groq.com/openai/v1",
+    model: "llama-3.3-70b-versatile",
+    hint: "مجاني وسريع — احصل على المفتاح من console.groq.com",
+  },
+  openrouter: {
+    label: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    model: "google/gemini-2.0-flash-exp:free",
+    hint: "موديلات كثيرة بسعر موحّد — openrouter.ai/keys",
+  },
+  deepseek: {
+    label: "DeepSeek",
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    hint: "رخيص وقوي بالعربي — platform.deepseek.com",
+  },
+};
 
 export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllamaStatusChange }) {
   const [models, setModels] = useState([]);
@@ -8,6 +31,13 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
   const [ollamaUrl, setOllamaUrl] = useState(settings.ollamaUrl);
   const [testStatus, setTestStatus] = useState(null);
   const [ollamaAction, setOllamaAction] = useState(null); // "killing" | "starting" | null
+
+  // External provider state
+  const [showKey, setShowKey] = useState(false);
+  const [extModels, setExtModels] = useState([]);
+  const [loadingExtModels, setLoadingExtModels] = useState(false);
+  const [extTest, setExtTest] = useState(null); // { ok, error } | null
+  const [testingExt, setTestingExt] = useState(false);
 
   const fetchModels = async () => {
     setLoadingModels(true);
@@ -63,6 +93,67 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
     }
   };
 
+  // ── External provider helpers ──
+  const applyPreset = (key) => {
+    const preset = PROVIDER_PRESETS[key];
+    if (!preset) return;
+    onUpdate({
+      apiBaseUrl: preset.baseUrl,
+      apiModel: preset.model,
+    });
+    setExtTest(null);
+    setExtModels([]);
+  };
+
+  const fetchExternalModels = async () => {
+    if (!settings.apiBaseUrl) {
+      setExtTest({ ok: false, error: "أدخل Base URL أولاً" });
+      return;
+    }
+    setLoadingExtModels(true);
+    setExtTest(null);
+    try {
+      const res = await fetch(`${apiUrl}/models/external`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl: settings.apiBaseUrl, apiKey: settings.apiKey }),
+      });
+      const data = await res.json();
+      if (res.ok && data.models?.length > 0) {
+        setExtModels(data.models);
+      } else {
+        setExtModels([]);
+        setExtTest({ ok: false, error: data.error || "لم يتم العثور على موديلات" });
+      }
+    } catch (err) {
+      setExtTest({ ok: false, error: err.message || "فشل جلب الموديلات" });
+    } finally {
+      setLoadingExtModels(false);
+    }
+  };
+
+  const testExternalConnection = async () => {
+    if (!settings.apiBaseUrl) {
+      setExtTest({ ok: false, error: "أدخل Base URL أولاً" });
+      return;
+    }
+    setTestingExt(true);
+    setExtTest(null);
+    try {
+      const res = await fetch(`${apiUrl}/health/provider`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl: settings.apiBaseUrl, apiKey: settings.apiKey }),
+      });
+      const data = await res.json();
+      setExtTest(data);
+    } catch (err) {
+      setExtTest({ ok: false, error: err.message || "تعذّر الاتصال" });
+    } finally {
+      setTestingExt(false);
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -72,6 +163,164 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
         </div>
 
         <div className="modal__body">
+
+          {/* ── مصدر الذكاء الاصطناعي ── */}
+          <div className="settings-section">
+            <div className="settings-section__title">مصدر الذكاء الاصطناعي</div>
+
+            <div className="provider-toggle">
+              <button
+                type="button"
+                className={`provider-tab${settings.provider !== "openai_compat" ? " active" : ""}`}
+                onClick={() => onUpdate({ provider: "ollama" })}
+              >
+                <HardDrive size={14} />
+                محلي (Ollama)
+              </button>
+              <button
+                type="button"
+                className={`provider-tab${settings.provider === "openai_compat" ? " active" : ""}`}
+                onClick={() => onUpdate({ provider: "openai_compat" })}
+              >
+                <Cloud size={14} />
+                API خارجي
+              </button>
+            </div>
+
+            {settings.provider === "openai_compat" && (
+              <>
+                <div className="settings-field">
+                  <label>إعدادات سريعة</label>
+                  <div className="provider-presets">
+                    {Object.entries(PROVIDER_PRESETS).map(([key, p]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`provider-preset${settings.apiBaseUrl === p.baseUrl ? " active" : ""}`}
+                        onClick={() => applyPreset(key)}
+                        title={p.hint}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="settings-field__hint">اضغط لتعبئة Base URL والموديل الافتراضي تلقائياً</span>
+                </div>
+
+                <div className="settings-field">
+                  <label>Base URL</label>
+                  <input
+                    className="settings-input"
+                    value={settings.apiBaseUrl || ""}
+                    onChange={(e) => onUpdate({ apiBaseUrl: e.target.value })}
+                    placeholder="https://api.groq.com/openai/v1"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div className="settings-field">
+                  <label>API Key</label>
+                  <div className="provider-key">
+                    <input
+                      className="settings-input"
+                      type={showKey ? "text" : "password"}
+                      value={settings.apiKey || ""}
+                      onChange={(e) => onUpdate({ apiKey: e.target.value })}
+                      placeholder="sk-..."
+                      dir="ltr"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={() => setShowKey((v) => !v)}
+                      title={showKey ? "إخفاء" : "إظهار"}
+                    >
+                      {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  <span className="settings-field__hint" style={{ color: "#d97706" }}>
+                    ⚠ المفتاح يُحفظ على جهازك في localStorage بدون تشفير. لا تشاركه ولا تستخدمه على جهاز مشترك.
+                  </span>
+                </div>
+
+                <div className="settings-field">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <label>الموديل</label>
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={fetchExternalModels}
+                      disabled={loadingExtModels || !settings.apiBaseUrl}
+                      title="جلب قائمة الموديلات"
+                    >
+                      <RefreshCw size={14} style={{ animation: loadingExtModels ? "spin 1s linear infinite" : "none" }} />
+                    </button>
+                  </div>
+                  {extModels.length > 0 ? (
+                    <select
+                      className="settings-select"
+                      value={settings.apiModel || ""}
+                      onChange={(e) => onUpdate({ apiModel: e.target.value })}
+                      dir="ltr"
+                    >
+                      <option value="">— اختر موديل —</option>
+                      {extModels.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      className="settings-input"
+                      value={settings.apiModel || ""}
+                      onChange={(e) => onUpdate({ apiModel: e.target.value })}
+                      placeholder="llama-3.3-70b-versatile"
+                      dir="ltr"
+                    />
+                  )}
+                </div>
+
+                <div className="settings-field">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={testExternalConnection}
+                    disabled={testingExt || !settings.apiBaseUrl}
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <Plug size={13} />
+                    {testingExt ? "جاري الاختبار..." : "اختبار الاتصال"}
+                  </button>
+                  {extTest && (
+                    <div
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        color: extTest.ok ? "#34a853" : "#ea4335",
+                        fontSize: 13, marginTop: 8,
+                      }}
+                    >
+                      {extTest.ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                      {extTest.ok ? "تم الاتصال بنجاح" : extTest.error}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "10px 12px",
+                    fontSize: 12,
+                    color: "var(--text-secondary)",
+                    lineHeight: 1.8,
+                  }}
+                >
+                  ℹ <strong>ملاحظات:</strong> بياناتك المكتوبة (المستندات والمشاريع) تبقى محلية على جهازك.
+                  فقط طلبات المساعد ترسل إلى المزود الخارجي.<br />
+                  ⚠ <strong>التدقيق الإملائي يتعطّل تلقائياً</strong> في وضع API لتجنّب التكاليف.
+                </div>
+              </>
+            )}
+          </div>
 
           {/* ── Ollama ── */}
           <div className="settings-section">
