@@ -120,7 +120,7 @@ npm run dist
 - **Repo**: https://github.com/aragonaragon/aragon-write
 - **Branch**: `main`
 - **Last commit**: `a60a61b` (مدفوع)
-- **Git identity (local فقط، مو global)**: `aragonaragon` / `nathoool92@gmail.com`
+- **المالك / للتواصل**: `aragonaragon` ([nathoool92@gmail.com](mailto:nathoool92@gmail.com))
 
 ---
 

@@ -146,6 +146,15 @@ aragon write/
 
 ---
 
+## 📬 التواصل
+
+لأي اقتراح، بلاغ خطأ، أو طلب ميزة:
+
+- **GitHub Issues:** [aragonaragon/aragon-write/issues](https://github.com/aragonaragon/aragon-write/issues)
+- **بريد إلكتروني:** [nathoool92@gmail.com](mailto:nathoool92@gmail.com)
+
+---
+
 <div align="center">
 
 **مبني بـ React · TipTap · Electron · Ollama**
