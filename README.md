@@ -34,8 +34,11 @@
 
 | الميزة | التفاصيل |
 |--------|---------|
+| 🏠 **شاشة بداية ذكية** | تختار مشروعك أو تكمل آخر فصل عدّلت عليه قبل ما تبدأ الكتابة |
 | 🤖 **AI محلي** | مدعوم بـ Ollama — يعمل بدون إنترنت وبدون اشتراك |
-| 📚 **مكتبة مشاريع** | مجلد مستقل لكل رواية محفوظ على قرصك |
+| 📚 **مكتبة مشاريع** | مجلد مستقل لكل مشروع محفوظ على قرصك |
+| 🔀 **تبديل سريع بين الفصول** | قائمة منسدلة من شريط العنوان — تنقل/تسمية/إنشاء بضغطة |
+| 💬 **محادثة مع المستند** | اسأل المساعد عن أي شي — معلومة، فكرة، أو شرح، مع سياق ذكي من نصك |
 | ✍️ **محرر WYSIWYG** | تنسيق كامل مع دعم RTL العربي |
 | 🎯 **Focus Mode** | F11 — يخفي كل شيء إلا النص |
 | ⌨️ **Typewriter Mode** | يثبّت المؤشر في المنتصف |
@@ -96,9 +99,11 @@ Storage:   JSON files — ~/Documents/AragonWrite/
 ```
 aragon write/
 ├── frontend/src/
-│   ├── App.jsx              # State + Layout
+│   ├── App.jsx              # State + Layout + Home/Editor switch
 │   ├── components/
-│   │   ├── AIPanel.jsx      # AI streaming panel
+│   │   ├── Home.jsx         # شاشة البداية (اختيار المشروع)
+│   │   ├── DocSwitcher.jsx  # قائمة تبديل الفصول
+│   │   ├── AIPanel.jsx      # AI streaming + chat panel
 │   │   ├── DocumentManager.jsx
 │   │   ├── ProjectManager.jsx
 │   │   ├── Settings.jsx
