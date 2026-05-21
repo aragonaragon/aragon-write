@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✍️ أرغون رايت
+<img src="docs/banner.png" alt="Aragon Write" width="720">
 
 ### محرر الكتابة العربي الذكي
 
