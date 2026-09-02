@@ -1004,10 +1004,10 @@ svg.lucide { stroke-width: 1.6; flex-shrink: 0; }
 }
 .paper {
   position: relative;
-  width: min(100%, 880px);
+  width: 100%;
   min-height: calc(100% - 20px);
-  margin: 6px auto 0;
-  padding: clamp(40px, 6vw, 76px) clamp(32px, 7vw, 92px);
+  margin: 6px 0 0;
+  padding: clamp(36px, 5vw, 64px) clamp(32px, 5vw, 80px);
   border-radius: var(--r-xl);
   background: var(--paper);
   box-shadow:
@@ -1432,7 +1432,8 @@ svg.lucide { stroke-width: 1.6; flex-shrink: 0; }
 .app-focus-mode .editor-layout { padding: 0; }
 .app-focus-mode .editor-stage { padding: 64px 24px 96px; }
 .app-focus-mode .paper {
-  width: min(100%, 760px);
+  width: min(100%, 980px);
+  margin-inline: auto;
   padding: clamp(56px, 8vw, 96px) clamp(40px, 9vw, 110px);
 }
 .focus-exit-hint {
