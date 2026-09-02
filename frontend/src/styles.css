@@ -1,9 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Aragon Write — Google-Docs-inspired design system
-   RTL-first, Arabic typography, Light + Dark mode
+   Aragon Write — legacy base styles
+   Behavioural selectors remain here; redesign.css provides the visual system.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap');
 
 /* ─── Design Tokens ─────────────────────────────────────────────────────────── */
 :root {

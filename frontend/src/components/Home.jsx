@@ -2,21 +2,21 @@ import { useState } from "react";
 import { BookOpen, BookPlus, FileText, Trash2, Sun, Moon, Palette, Settings as SettingsIcon, Clock, Cloud } from "lucide-react";
 import { getProviderName, isExternal } from "../lib/provider";
 
-const GRADIENTS = [
-  "linear-gradient(135deg,#667eea,#764ba2)",
-  "linear-gradient(135deg,#f093fb,#f5576c)",
-  "linear-gradient(135deg,#4facfe,#00f2fe)",
-  "linear-gradient(135deg,#43e97b,#38f9d7)",
-  "linear-gradient(135deg,#fa709a,#fee140)",
-  "linear-gradient(135deg,#a18cd1,#fbc2eb)",
-  "linear-gradient(135deg,#fccb90,#d57eeb)",
-  "linear-gradient(135deg,#84fab0,#8fd3f4)",
+const COVER_TONES = [
+  "#203142",
+  "#5e4b43",
+  "#36574f",
+  "#6a5331",
+  "#4d5367",
+  "#70464c",
+  "#40556b",
+  "#59603f",
 ];
 
-function pickGradient(id) {
+function pickCoverTone(id) {
   let hash = 0;
   for (const c of id || "") hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+  return COVER_TONES[Math.abs(hash) % COVER_TONES.length];
 }
 
 function formatRelative(iso) {
@@ -111,7 +111,7 @@ export default function Home({
             >
               <div
                 className="home__continue-cover"
-                style={{ background: lastProject.gradient || pickGradient(lastProject.id) }}
+                style={{ "--cover-tone": pickCoverTone(lastProject.id) }}
               >
                 <span>{lastProject.title?.charAt(0) || "؟"}</span>
               </div>
@@ -172,10 +172,18 @@ export default function Home({
                 key={project.id}
                 className="home__project-card"
                 onClick={() => onOpenProject(project.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenProject(project.id);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
               >
                 <div
                   className="home__project-cover"
-                  style={{ background: project.gradient || pickGradient(project.id) }}
+                  style={{ "--cover-tone": pickCoverTone(project.id) }}
                 >
                   <span>{project.title?.charAt(0) || "؟"}</span>
                 </div>
@@ -189,6 +197,7 @@ export default function Home({
                   className="home__project-delete"
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(project.id); }}
                   title="حذف"
+                  aria-label={`حذف مشروع ${project.title || "بدون عنوان"}`}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -220,7 +229,7 @@ export default function Home({
       {/* Confirm delete */}
       {confirmDelete && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="modal modal--sm">
+          <div className="modal modal--sm" role="dialog" aria-modal="true" aria-label="تأكيد حذف المشروع">
             <div className="modal__header">
               <h2 className="modal__title">حذف المشروع</h2>
             </div>

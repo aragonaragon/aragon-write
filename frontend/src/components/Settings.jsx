@@ -156,10 +156,10 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal" role="dialog" aria-modal="true" aria-label="الإعدادات">
         <div className="modal__header">
           <h2 className="modal__title">الإعدادات</h2>
-          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+          <button className="btn-icon" onClick={onClose} aria-label="إغلاق الإعدادات"><X size={18} /></button>
         </div>
 
         <div className="modal__body">

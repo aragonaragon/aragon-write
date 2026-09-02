@@ -66,7 +66,7 @@ export default function DocumentManager({
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className="modal" role="dialog" aria-modal="true" aria-label={projectMode ? "فصول المشروع" : "المستندات"}>
         <div className="modal__header">
           <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {projectMode && <BookOpen size={18} />}
@@ -84,7 +84,7 @@ export default function DocumentManager({
                 خروج
               </button>
             )}
-            <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+            <button className="btn-icon" onClick={onClose} aria-label="إغلاق"><X size={18} /></button>
           </div>
         </div>
 
@@ -149,7 +149,7 @@ export default function DocumentManager({
       {/* Confirm delete dialog */}
       {confirmDelete && (
         <div className="modal-overlay" style={{ zIndex: 400 }} onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="modal modal--sm">
+          <div className="modal modal--sm" role="alertdialog" aria-modal="true" aria-label="تأكيد حذف المستند">
             <div className="modal__header">
               <h2 className="modal__title">تأكيد الحذف</h2>
             </div>

@@ -1095,9 +1095,7 @@ export default function App() {
             apiUrl={API_URL}
           />
         )}
-        {toasts.map((t) => (
-          <Toast key={t.id} message={t.message} type={t.type} duration={t.duration} onDismiss={() => dismissToast(t.id)} />
-        ))}
+        <Toast toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -1114,66 +1112,70 @@ export default function App() {
 
       {/* Top Bar */}
       <header className="topbar">
-        <div className="topbar__logo">
+        <div className="topbar__identity" aria-label="أرغون رايت">
           <div className="topbar__logo-icon">أ</div>
+          <span className="topbar__brand-name">أرغون</span>
         </div>
 
-        {/* Project breadcrumb — clicking goes back to Home */}
-        {projectMode ? (
-          <div className="topbar__breadcrumb">
-            <button className="topbar__breadcrumb-btn" onClick={goHome} title="العودة للمكتبة">
+        <div className="topbar__document-zone">
+          {/* Project breadcrumb — clicking goes back to Home */}
+          {projectMode ? (
+            <div className="topbar__breadcrumb">
+              <button className="topbar__breadcrumb-btn" onClick={goHome} title="العودة للمكتبة" aria-label="العودة للمكتبة">
+                <BookOpen size={14} />
+                <span>{currentProject?.title || "..."}</span>
+              </button>
+              <ChevronLeft className="topbar__breadcrumb-separator" size={12} />
+            </div>
+          ) : (
+            <button
+              className="topbar__library-btn"
+              onClick={goHome}
+              title="العودة للمكتبة"
+              aria-label="العودة للمكتبة"
+            >
               <BookOpen size={14} />
-              <span>{currentProject?.title || "..."}</span>
+              المكتبة
             </button>
-            <ChevronLeft size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          </div>
-        ) : (
-          <button
-            className="topbar__library-btn"
-            onClick={goHome}
-            title="العودة للمكتبة"
-          >
-            <BookOpen size={14} />
-            المكتبة
-          </button>
-        )}
+          )}
 
-        <DocSwitcher
-          documents={documents}
-          currentDoc={currentDoc}
-          projectMode={projectMode}
-          onOpen={openDocument}
-          onCreate={createDocument}
-          onOpenManager={() => setIsDocManagerOpen(true)}
-          onUpdateTitle={updateDocTitle}
-        />
+          <DocSwitcher
+            documents={documents}
+            currentDoc={currentDoc}
+            projectMode={projectMode}
+            onOpen={openDocument}
+            onCreate={createDocument}
+            onOpenManager={() => setIsDocManagerOpen(true)}
+            onUpdateTitle={updateDocTitle}
+          />
 
-        <FileMenu
-          onAction={runFileAction}
-          hasDoc={!!currentDoc}
-          hasProject={!!currentProjectId}
-          showDocx={true}
-        />
+          <FileMenu
+            onAction={runFileAction}
+            hasDoc={!!currentDoc}
+            hasProject={!!currentProjectId}
+            showDocx={true}
+          />
+        </div>
 
         <div className="topbar__spacer" />
 
         <div className="topbar__actions">
-          <button className="btn-ai" onClick={() => setIsAIPanelOpen((v) => !v)} title="مساعد الكتابة الذكي (Ctrl+K)">
-            <Sparkles size={15} />مساعد AI
+          <button className={`btn-ai${isAIPanelOpen ? " active" : ""}`} onClick={() => setIsAIPanelOpen((v) => !v)} title="مساعد الكتابة الذكي (Ctrl+K)">
+            <Sparkles size={15} />المساعد
           </button>
 
           {/* Zoom */}
-          <div style={{ display: "flex", alignItems: "center", gap: 2, background: "var(--bg)", borderRadius: "var(--radius-md)", padding: "2px 4px", border: "1px solid var(--border)", direction: "ltr" }}>
-            <button className="btn-icon" style={{ width: 26, height: 26 }} onClick={() => updateSettings({ zoom: Math.max(50, settings.zoom - 10) })} title="تصغير"><ZoomOut size={13} /></button>
-            <span style={{ fontSize: 12, minWidth: 36, textAlign: "center", color: "var(--text-secondary)", cursor: "pointer", userSelect: "none" }} onClick={() => updateSettings({ zoom: 100 })} title="100%">{settings.zoom}%</span>
-            <button className="btn-icon" style={{ width: 26, height: 26 }} onClick={() => updateSettings({ zoom: Math.min(250, settings.zoom + 10) })} title="تكبير"><ZoomIn size={13} /></button>
+          <div className="zoom-control">
+            <button className="btn-icon zoom-control__button" onClick={() => updateSettings({ zoom: Math.max(50, settings.zoom - 10) })} title="تصغير" aria-label="تصغير"><ZoomOut size={13} /></button>
+            <button className="zoom-control__value" onClick={() => updateSettings({ zoom: 100 })} title="إعادة التكبير إلى 100%">{settings.zoom}%</button>
+            <button className="btn-icon zoom-control__button" onClick={() => updateSettings({ zoom: Math.min(250, settings.zoom + 10) })} title="تكبير" aria-label="تكبير"><ZoomIn size={13} /></button>
           </div>
 
-          <button className="btn-icon" onClick={() => setIsOutlineOpen((v) => !v)} title="جدول المحتويات"><AlignJustify size={16} /></button>
-          <button className="btn-icon" onClick={() => setIsDocManagerOpen(true)} title={projectMode ? "فصول المشروع" : "المستندات"}><FolderOpen size={16} /></button>
-          <button className="btn-icon" onClick={cycleTheme} title={`التالي: ${themeNextLabel}`}>{themeIcon}</button>
-          <button className={`btn-icon${isFocusMode ? " active" : ""}`} onClick={() => setIsFocusMode((v) => !v)} title={isFocusMode ? "الخروج (F11)" : "وضع التركيز (F11)"}>{isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
-          <button className="btn-icon" onClick={() => setIsSettingsOpen(true)} title="الإعدادات"><SettingsIcon size={16} /></button>
+          <button className={`btn-icon${isOutlineOpen ? " active" : ""}`} onClick={() => setIsOutlineOpen((v) => !v)} title="جدول المحتويات" aria-label="جدول المحتويات"><AlignJustify size={16} /></button>
+          <button className="btn-icon" onClick={() => setIsDocManagerOpen(true)} title={projectMode ? "فصول المشروع" : "المستندات"} aria-label={projectMode ? "فصول المشروع" : "المستندات"}><FolderOpen size={16} /></button>
+          <button className="btn-icon" onClick={cycleTheme} title={`التالي: ${themeNextLabel}`} aria-label={`تبديل المظهر — التالي: ${themeNextLabel}`}>{themeIcon}</button>
+          <button className={`btn-icon${isFocusMode ? " active" : ""}`} onClick={() => setIsFocusMode((v) => !v)} title={isFocusMode ? "الخروج (F11)" : "وضع التركيز (F11)"} aria-label={isFocusMode ? "الخروج من وضع التركيز" : "وضع التركيز"}>{isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+          <button className="btn-icon" onClick={() => setIsSettingsOpen(true)} title="الإعدادات" aria-label="الإعدادات"><SettingsIcon size={16} /></button>
         </div>
       </header>
 

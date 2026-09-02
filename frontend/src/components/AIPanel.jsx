@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X, Sparkles, RefreshCw, Minimize2, Maximize2,
   ArrowRight, Languages, CheckCircle, Lightbulb,
@@ -224,10 +224,12 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
     const message = chatInput.trim();
     const docContent = editor ? editor.getText() : "";
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
-
-    // Add placeholder for assistant response
-    const assistantIndex = chatMessages.length + 1;
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", content: message },
+      { role: "assistant", content: "__streaming__" },
+    ]);
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
 
     await run({
       action: "chat",
@@ -236,23 +238,20 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
       docContent,
       ...resolveProvider(),
     });
-
-    // After streaming, move result to chat messages
-    setChatMessages((prev) => [...prev, { role: "assistant", content: "__streaming__" }]);
-    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
   // When streaming ends, replace __streaming__ message with actual result
   const prevStreamingRef = useRef(streaming);
-  if (prevStreamingRef.current !== streaming) {
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
     prevStreamingRef.current = streaming;
-    if (!streaming && result && tab === "chat") {
+    if (wasStreaming && !streaming && result && tab === "chat") {
       setChatMessages((prev) =>
         prev.map((m) => (m.content === "__streaming__" ? { ...m, content: result } : m))
       );
       clear();
     }
-  }
+  }, [streaming, result, tab, clear]);
 
   if (!isOpen) return null;
 
@@ -267,7 +266,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
           <Sparkles size={16} />
           مساعد الكتابة
         </div>
-        <button className="btn-icon" onClick={onClose} title="إغلاق">
+        <button className="btn-icon" onClick={onClose} title="إغلاق" aria-label="إغلاق المساعد">
           <X size={16} />
         </button>
       </div>

@@ -45,10 +45,10 @@ export default function ImportDialog({
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="modal modal--sm">
+      <div className="modal modal--sm" role="dialog" aria-modal="true" aria-label="استيراد ملف">
         <div className="modal__header">
           <h2 className="modal__title">استيراد ملف</h2>
-          <button className="btn-icon" onClick={onCancel} title="إلغاء"><X size={18} /></button>
+          <button className="btn-icon" onClick={onCancel} title="إلغاء" aria-label="إغلاق نافذة الاستيراد"><X size={18} /></button>
         </div>
 
         <div className="modal__body">

@@ -16,23 +16,23 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
         />
       )}
 
-      <div className="statusbar__item">
+      <div className="statusbar__item statusbar__words">
         <FileText size={12} />
         <span>{stats.words} كلمة</span>
       </div>
 
-      <div className="statusbar__item">
+      <div className="statusbar__item statusbar__chars">
         <span>{stats.chars} حرف</span>
       </div>
 
       {sessionWords > 0 && (
-        <div className="statusbar__item" style={{ color: "var(--primary)" }}>
+        <div className="statusbar__item statusbar__session">
           <span>+{sessionWords} هذه الجلسة</span>
         </div>
       )}
 
       {writingGoal > 0 && (
-        <div className="statusbar__item" style={{ color: goalReached ? "#34a853" : "var(--text-muted)" }}>
+        <div className={`statusbar__item statusbar__goal${goalReached ? " reached" : ""}`}>
           <Target size={12} />
           <span>
             {goalReached ? "✓ " : ""}{stats.words} / {writingGoal}
@@ -41,7 +41,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       )}
 
       {issueCount > 0 && (
-        <div className="statusbar__item" style={{ color: "#ea4335" }}>
+        <div className="statusbar__item statusbar__spelling">
           <AlertCircle size={12} />
           <span>{issueCount} خطأ إملائي</span>
         </div>
@@ -49,7 +49,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
 
       <div className="statusbar__spacer" />
 
-      <div className="statusbar__item" style={{ gap: 6 }}>
+      <div className="statusbar__item statusbar__provider">
         {external && <Cloud size={11} style={{ color: "var(--text-muted)" }} />}
         <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
         <span>{statusLabel}</span>
@@ -60,7 +60,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
             onClick={onStartOllama}
             disabled={ollamaAction === "starting"}
             title="تشغيل Ollama"
-            style={{ width: 20, height: 20, color: "#34a853" }}
+            aria-label="تشغيل Ollama"
           >
             <Play size={11} />
           </button>
@@ -71,19 +71,19 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
             onClick={onKillOllama}
             disabled={ollamaAction === "killing"}
             title="إيقاف Ollama"
-            style={{ width: 20, height: 20, color: "#ea4335" }}
+            aria-label="إيقاف Ollama"
           >
             <Power size={11} />
           </button>
         )}
       </div>
 
-      <div className="statusbar__item">
+      <div className="statusbar__item statusbar__model">
         <Cpu size={12} />
         <span>{model}</span>
       </div>
 
-      <div className="statusbar__item">
+      <div className="statusbar__item statusbar__docs">
         <span>{docCount} مستند</span>
       </div>
 

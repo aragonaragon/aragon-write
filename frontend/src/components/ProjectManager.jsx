@@ -1,21 +1,21 @@
 import { useState } from "react";
 import { X, BookPlus, Trash2, BookOpen, FolderOpen } from "lucide-react";
 
-const GRADIENTS = [
-  "linear-gradient(135deg,#667eea,#764ba2)",
-  "linear-gradient(135deg,#f093fb,#f5576c)",
-  "linear-gradient(135deg,#4facfe,#00f2fe)",
-  "linear-gradient(135deg,#43e97b,#38f9d7)",
-  "linear-gradient(135deg,#fa709a,#fee140)",
-  "linear-gradient(135deg,#a18cd1,#fbc2eb)",
-  "linear-gradient(135deg,#fccb90,#d57eeb)",
-  "linear-gradient(135deg,#84fab0,#8fd3f4)",
+const COVER_TONES = [
+  "#203142",
+  "#5e4b43",
+  "#36574f",
+  "#6a5331",
+  "#4d5367",
+  "#70464c",
+  "#40556b",
+  "#59603f",
 ];
 
-function pickGradient(id) {
+function pickCoverTone(id) {
   let hash = 0;
   for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
-  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+  return COVER_TONES[Math.abs(hash) % COVER_TONES.length];
 }
 
 function formatDate(iso) {
@@ -37,13 +37,13 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal modal--library">
+      <div className="modal modal--library" role="dialog" aria-modal="true" aria-label="مكتبتي">
         <div className="modal__header">
           <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <BookOpen size={20} />
             مكتبتي
           </h2>
-          <button className="btn-icon" onClick={onClose}><X size={18} /></button>
+          <button className="btn-icon" onClick={onClose} aria-label="إغلاق المكتبة"><X size={18} /></button>
         </div>
 
         <div className="modal__body">
@@ -87,7 +87,7 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
                 >
                   <div
                     className="project-card__cover"
-                    style={{ background: project.gradient || pickGradient(project.id) }}
+                    style={{ "--cover-tone": pickCoverTone(project.id) }}
                   >
                     <span className="project-card__letter">
                       {project.title?.charAt(0) || "؟"}
@@ -141,7 +141,7 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
       {confirmDelete && (
         <div className="modal-overlay" style={{ zIndex: 400 }}
           onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="modal modal--sm">
+          <div className="modal modal--sm" role="alertdialog" aria-modal="true" aria-label="تأكيد حذف المشروع">
             <div className="modal__header">
               <h2 className="modal__title">حذف المشروع</h2>
             </div>

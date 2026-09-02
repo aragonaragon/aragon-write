@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -46,7 +47,7 @@ function TBtn({ title, isActive, onClick, disabled, children, style }) {
       onClick={onClick}
       disabled={disabled}
       type="button"
-      tabIndex={-1}
+      aria-label={title}
       style={style}
     >
       {children}
@@ -56,72 +57,57 @@ function TBtn({ title, isActive, onClick, disabled, children, style }) {
 
 function Dropdown({ trigger, children, open, onClose }) {
   const ref = useRef(null);
+  const menuRef = useRef(null);
   useEffect(() => {
     if (!open) return;
-    const handle = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const handle = (e) => {
+      if (ref.current && !ref.current.contains(e.target) && !menuRef.current?.contains(e.target)) onClose();
+    };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [open, onClose]);
-  if (!open) return trigger;
+
+  const rect = open ? ref.current?.getBoundingClientRect() : null;
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={ref} className="toolbar-dropdown-wrap">
       {trigger}
-      <div
-        className="toolbar-dropdown"
-        style={{
-          position: "absolute",
-          top: "calc(100% + 4px)",
-          right: 0,
-          zIndex: 100,
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-lg)",
-          padding: 6,
-          minWidth: 140,
-        }}
-      >
-        {children}
-      </div>
+      {open && createPortal(
+        <div
+          ref={menuRef}
+          className="toolbar-dropdown toolbar-dropdown--floating"
+          role="menu"
+          style={rect ? {
+            top: rect.bottom + 5,
+            right: document.documentElement.clientWidth - rect.right,
+          } : undefined}
+        >
+          {children}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
 
 function ColorPalette({ colors, onSelect, onClear, activeColor }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, padding: 4 }}>
+    <div className="color-palette">
       {colors.map((c) => (
         <button
           key={c}
           onClick={() => onSelect(c)}
           title={c}
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: "var(--radius-sm)",
-            background: c,
-            border: activeColor === c ? "2px solid var(--primary)" : "1px solid var(--border)",
-            cursor: "pointer",
-            padding: 0,
-          }}
+          aria-label={`اختيار اللون ${c}`}
+          className={`color-palette__swatch${activeColor === c ? " active" : ""}`}
+          style={{ "--swatch-color": c }}
         />
       ))}
       {onClear && (
         <button
           onClick={onClear}
           title="بدون لون"
-          style={{
-            width: 22,
-            height: 22,
-            borderRadius: "var(--radius-sm)",
-            background: "transparent",
-            border: "1px dashed var(--border)",
-            cursor: "pointer",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+          aria-label="إزالة اللون"
+          className="color-palette__swatch color-palette__swatch--clear"
         >
           <X size={12} />
         </button>
@@ -131,11 +117,11 @@ function ColorPalette({ colors, onSelect, onClear, activeColor }) {
 }
 
 export default function Toolbar({ editor }) {
-  if (!editor) return null;
-
   const [sizeOpen, setSizeOpen] = useState(false);
   const [textColorOpen, setTextColorOpen] = useState(false);
   const [bgColorOpen, setBgColorOpen] = useState(false);
+
+  if (!editor) return null;
 
   const getCurrentHeadingLabel = () => {
     for (let i = 1; i <= 6; i++) {
@@ -244,20 +230,12 @@ export default function Toolbar({ editor }) {
             </TBtn>
           }
         >
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+          <div className="font-size-grid">
             {SIZES.map((s) => (
               <button
                 key={s}
                 onClick={() => handleFontSize(s)}
-                style={{
-                  padding: "4px 8px",
-                  fontSize: s >= 24 ? 14 : s,
-                  borderRadius: "var(--radius-sm)",
-                  border: currentFontSize === s ? "2px solid var(--primary)" : "1px solid transparent",
-                  background: currentFontSize === s ? "var(--primary-ghost)" : "transparent",
-                  cursor: "pointer",
-                  color: "var(--text)",
-                }}
+                className={`font-size-grid__option${currentFontSize === s ? " active" : ""}`}
               >
                 {s}
               </button>
