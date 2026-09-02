@@ -146,6 +146,7 @@ export default function App() {
   const [ollamaAction, setOllamaAction] = useState(null); // "starting" | "killing" | null
   const [toasts, setToasts] = useState([]);
   const [saveStatus, setSaveStatus] = useState("saved"); // "saved" | "saving" | "error"
+  const [loadedProjectId, setLoadedProjectId] = useState(null); // project whose docs finished loading
 
   const paperRef = useRef(null);
   const editorStageRef = useRef(null);
@@ -162,6 +163,7 @@ export default function App() {
   const currentProjectIdRef = useRef(currentProjectId);
   const currentDocIdRef = useRef(currentDocId);
   const documentsRef = useRef(documents);
+  const autoCreatedForRef = useRef(null);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
@@ -310,6 +312,8 @@ export default function App() {
         setCurrentDocId(docs.length > 0 ? docs[0].id : null);
         sessionStartWordsRef.current = null;
         setSessionWords(0);
+        autoCreatedForRef.current = null;
+        setLoadedProjectId(projectId);
         if (recovered.length > 0) {
           setSaveStatus("saving");
           setToasts((prev) => [...prev, {
@@ -331,6 +335,7 @@ export default function App() {
   }, [enqueueProjectSave]);
 
   useEffect(() => {
+    setLoadedProjectId(null);
     if (currentProjectId) {
       loadProjectDocs(currentProjectId);
     } else {
@@ -1063,6 +1068,15 @@ export default function App() {
     if (!isHome && !projectMode && documents.length === 0) createDocument();
   }, [isHome]); // eslint-disable-line
 
+  // Projects must always have a chapter to write into, otherwise typed text
+  // has nowhere to be saved. Create one as soon as an empty project loads.
+  useEffect(() => {
+    if (isHome || !projectMode || loadedProjectId !== currentProjectId) return;
+    if (documents.length > 0 || autoCreatedForRef.current === currentProjectId) return;
+    autoCreatedForRef.current = currentProjectId;
+    createDocument();
+  }, [isHome, projectMode, loadedProjectId, currentProjectId, documents.length, createDocument]);
+
   // Theme cycle
   const themeIcon = settings.theme === "dark" ? <Sun size={16} /> : settings.theme === "sepia" ? <Palette size={16} /> : <Moon size={16} />;
   const cycleTheme = () => {
@@ -1161,7 +1175,7 @@ export default function App() {
 
         <div className="topbar__actions">
           <button className={`btn-ai${isAIPanelOpen ? " active" : ""}`} onClick={() => setIsAIPanelOpen((v) => !v)} title="مساعد الكتابة الذكي (Ctrl+K)">
-            <Sparkles size={15} />المساعد
+            <Sparkles size={15} /><span className="btn-ai__label">المساعد</span>
           </button>
 
           {/* Zoom */}
