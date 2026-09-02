@@ -367,6 +367,10 @@ svg.lucide { stroke-width: 1.6; flex-shrink: 0; }
   from { opacity: 0; transform: translateY(18px) scale(0.965); filter: blur(8px); }
   to   { opacity: 1; transform: translateY(0)    scale(1);     filter: blur(0); }
 }
+@keyframes modal-in-lite {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 0 0 currentColor; } 50% { box-shadow: 0 0 0 4px transparent; } }
@@ -2514,7 +2518,12 @@ body { -webkit-tap-highlight-color: transparent; }
 
 /* Phones */
 @media (max-width: 600px) {
-  :root { --topbar-h: 50px; }
+  :root { --topbar-h: 50px; --glass-blur: 8px; }
+  /* Lighter GPU load: no blur-in animations, plain surfaces instead of glass */
+  .topbar, .toolbar, .statusbar, .home__topbar, .toast, .focus-exit-hint { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--surface); }
+  .modal-overlay, .welcome-backdrop { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .modal, .welcome-modal { animation-name: modal-in-lite; animation-duration: var(--dur-2); }
+  .paper, .ai-panel, .toolbar, .statusbar, .home__hero, .home__section, .home__bento > * { animation-duration: var(--dur-2); filter: none; }
   .topbar { margin-top: calc(8px + env(safe-area-inset-top)); padding: 0 6px; gap: 4px; }
   .topbar__identity { padding-inline-end: 2px; }
   .topbar__document-zone { padding-inline-start: 4px; border-inline-start: 0; gap: 0; }
