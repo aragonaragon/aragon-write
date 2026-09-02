@@ -1,7 +1,7 @@
-import { FileText, Cpu, AlertCircle, Target, Play, Power, Cloud } from "lucide-react";
+import { FileText, Cpu, AlertCircle, Target, Play, Power, Cloud, CheckCircle2, LoaderCircle } from "lucide-react";
 import { getProviderStatusLabel, isExternal } from "../lib/provider";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, saveStatus, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings }) {
   const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
   const goalReached = writingGoal > 0 && stats.words >= writingGoal;
   const external = isExternal(settings);
@@ -87,8 +87,15 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
         <span>{docCount} مستند</span>
       </div>
 
-      <div className="statusbar__item" style={{ color: "var(--text-muted)", fontSize: 11 }}>
-        حفظ تلقائي
+      <div className={`statusbar__item statusbar__save statusbar__save--${saveStatus}`} aria-live="polite">
+        {saveStatus === "saving" ? <LoaderCircle size={12} /> : saveStatus === "error" ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
+        <span>
+          {saveStatus === "saving"
+            ? "جاري الحفظ…"
+            : saveStatus === "error"
+              ? "محفوظ محليًا — تعذرت المزامنة"
+              : "تم الحفظ"}
+        </span>
       </div>
     </footer>
   );

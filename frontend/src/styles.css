@@ -994,6 +994,23 @@ button, input, textarea, select {
 
 .statusbar__spacer { flex: 1; }
 
+.statusbar__save {
+  font-size: 11px;
+  transition: color 180ms ease;
+}
+
+.statusbar__save--saved { color: #2f8f57; }
+.statusbar__save--saving { color: var(--text-muted); }
+.statusbar__save--error { color: #c45a4a; }
+
+.statusbar__save--saving svg {
+  animation: autosave-spin 900ms linear infinite;
+}
+
+@keyframes autosave-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Modals ────────────────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;

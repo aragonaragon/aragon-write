@@ -30,6 +30,13 @@ import {
   readDocxAsHtml, readPdfAsHtml,
 } from "./lib/fileIO";
 import {
+  clearProjectDraft,
+  clearProjectDraftIfCurrent,
+  clearProjectDrafts,
+  mergeProjectDrafts,
+  saveProjectDraft,
+} from "./lib/autosave";
+import {
   PenLine, FolderOpen, Settings as SettingsIcon, Sun, Moon, Sparkles,
   AlignJustify, ZoomIn, ZoomOut, Maximize2, Minimize2, Palette,
   BookOpen, ChevronLeft,
@@ -37,7 +44,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-const AUTOSAVE_DELAY = 1500;
+const AUTOSAVE_DELAY = 700;
 const ARABIC_WORD_REGEX = /[\p{Script=Arabic}]+/gu;
 const SPELLCHECK_DEBOUNCE_MS = 800;
 
@@ -138,14 +145,17 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState(null);
   const [ollamaAction, setOllamaAction] = useState(null); // "starting" | "killing" | null
   const [toasts, setToasts] = useState([]);
+  const [saveStatus, setSaveStatus] = useState("saved"); // "saved" | "saving" | "error"
 
   const paperRef = useRef(null);
   const editorStageRef = useRef(null);
   const cacheRef = useRef(new Map());
   const pendingWordsRef = useRef(new Set());
   const debounceRef = useRef(null);
-  const autosaveRef = useRef(null);
-  const titleDebounceRef = useRef(null);
+  const autosaveTimersRef = useRef(new Map());
+  const pendingProjectSavesRef = useRef(new Map());
+  const projectSaveQueuesRef = useRef(new Map());
+  const projectLoadRequestRef = useRef(0);
   const destroyedRef = useRef(false);
   const sessionStartWordsRef = useRef(null);
   const settingsRef = useRef(settings);
@@ -157,6 +167,73 @@ export default function App() {
   useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
   useEffect(() => { currentDocIdRef.current = currentDocId; }, [currentDocId]);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
+
+  // Serialize saves within each project. The backend updates a shared project
+  // metadata file, so ordered writes also protect that atomic-write path.
+  const enqueueProjectSave = useCallback(({ projectId, doc }) => {
+    if (!projectId || !doc?.id) return Promise.resolve(false);
+    const previous = projectSaveQueuesRef.current.get(projectId) || Promise.resolve();
+    const request = previous
+      .catch(() => {})
+      .then(async () => {
+        const res = await fetch(`${API_URL}/fs/projects/${projectId}/docs/${doc.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(doc),
+          keepalive: true,
+        });
+        if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        const cleared = clearProjectDraftIfCurrent(projectId, doc);
+        if (cleared && pendingProjectSavesRef.current.size === 0) setSaveStatus("saved");
+        return true;
+      })
+      .catch(() => {
+        // The synchronous local draft remains available for recovery.
+        setSaveStatus("error");
+        return false;
+      })
+      .finally(() => {
+        if (projectSaveQueuesRef.current.get(projectId) === request) {
+          projectSaveQueuesRef.current.delete(projectId);
+        }
+      });
+    projectSaveQueuesRef.current.set(projectId, request);
+    return request;
+  }, []);
+
+  const flushProjectSave = useCallback((key) => {
+    const pending = pendingProjectSavesRef.current.get(key);
+    if (!pending) return Promise.resolve(false);
+    const timer = autosaveTimersRef.current.get(key);
+    if (timer) clearTimeout(timer);
+    autosaveTimersRef.current.delete(key);
+    pendingProjectSavesRef.current.delete(key);
+    return enqueueProjectSave(pending);
+  }, [enqueueProjectSave]);
+
+  const scheduleProjectSave = useCallback((projectId, doc, delay = AUTOSAVE_DELAY) => {
+    const key = `${projectId}:${doc.id}`;
+    const previousTimer = autosaveTimersRef.current.get(key);
+    if (previousTimer) clearTimeout(previousTimer);
+    pendingProjectSavesRef.current.set(key, { projectId, doc });
+    autosaveTimersRef.current.set(key, setTimeout(() => flushProjectSave(key), delay));
+    setSaveStatus("saving");
+  }, [flushProjectSave]);
+
+  const flushPendingProjectSaves = useCallback(() => {
+    const keys = [...pendingProjectSavesRef.current.keys()];
+    return Promise.all(keys.map((key) => flushProjectSave(key)));
+  }, [flushProjectSave]);
+
+  const cancelDocumentSave = useCallback(async (projectId, docId) => {
+    const key = `${projectId}:${docId}`;
+    const timer = autosaveTimersRef.current.get(key);
+    if (timer) clearTimeout(timer);
+    autosaveTimersRef.current.delete(key);
+    pendingProjectSavesRef.current.delete(key);
+    clearProjectDraft(projectId, docId);
+    await (projectSaveQueuesRef.current.get(projectId) || Promise.resolve());
+  }, []);
 
   const currentDoc = documents.find((d) => d.id === currentDocId) || null;
   const currentProject = projects.find((p) => p.id === currentProjectId) || null;
@@ -218,28 +295,52 @@ export default function App() {
 
   // ── Load project docs when project changes ──
   const loadProjectDocs = useCallback(async (projectId) => {
+    const requestId = ++projectLoadRequestRef.current;
     try {
       const res = await fetch(`${API_URL}/fs/projects/${projectId}/docs`);
       if (res.ok) {
-        const docs = await res.json();
+        const savedDocs = await res.json();
+        if (requestId !== projectLoadRequestRef.current || currentProjectIdRef.current !== projectId) {
+          return [];
+        }
+        const { documents: docs, recovered, stale } = mergeProjectDrafts(projectId, savedDocs);
+        stale.forEach((docId) => clearProjectDraft(projectId, docId));
+        documentsRef.current = docs;
         setDocuments(docs);
         setCurrentDocId(docs.length > 0 ? docs[0].id : null);
         sessionStartWordsRef.current = null;
         setSessionWords(0);
+        if (recovered.length > 0) {
+          setSaveStatus("saving");
+          setToasts((prev) => [...prev, {
+            id: genId(),
+            message: recovered.length === 1
+              ? "تم استعادة آخر كتابة غير محفوظة"
+              : `تم استعادة ${recovered.length} مسودات غير محفوظة`,
+            type: "success",
+            duration: 6000,
+          }]);
+          recovered.forEach((doc) => enqueueProjectSave({ projectId, doc }));
+        } else {
+          setSaveStatus("saved");
+        }
         return docs;
       }
     } catch {}
     return [];
-  }, []);
+  }, [enqueueProjectSave]);
 
   useEffect(() => {
     if (currentProjectId) {
       loadProjectDocs(currentProjectId);
     } else {
+      projectLoadRequestRef.current += 1;
       // Back to localStorage docs
       const docs = loadDocuments();
+      documentsRef.current = docs;
       setDocuments(docs);
       setCurrentDocId(docs.length > 0 ? docs[0].id : null);
+      setSaveStatus("saved");
     }
   }, [currentProjectId]); // eslint-disable-line
 
@@ -344,33 +445,35 @@ export default function App() {
           });
         }
 
-        // Autosave
-        if (autosaveRef.current) clearTimeout(autosaveRef.current);
-        autosaveRef.current = setTimeout(() => {
-          const projId = currentProjectIdRef.current;
-          const docId = currentDocIdRef.current;
-          if (!docId) return;
-          setDocuments((prev) => {
-            const updated = prev.map((d) =>
-              d.id === docId ? { ...d, content: e.getHTML(), updatedAt: new Date().toISOString() } : d
-            );
-            if (projId) {
-              const doc = updated.find((d) => d.id === docId);
-              if (doc) {
-                fetch(`${API_URL}/fs/projects/${projId}/docs/${docId}`, {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(doc),
-                }).catch(() => {
-                  showToast("فشل الحفظ — تأكد من تشغيل التطبيق", "error");
-                });
-              }
-            } else {
+        // Keep an immediate, synchronous copy before the delayed disk sync.
+        // Capture the IDs and HTML now so switching documents cannot redirect
+        // this edit to a different chapter.
+        const projectId = currentProjectIdRef.current;
+        const docId = currentDocIdRef.current;
+        const existing = documentsRef.current.find((doc) => doc.id === docId);
+        if (docId && existing) {
+          const snapshot = {
+            ...existing,
+            content: e.getHTML(),
+            updatedAt: new Date().toISOString(),
+          };
+          const updated = documentsRef.current.map((doc) => doc.id === docId ? snapshot : doc);
+          documentsRef.current = updated;
+          setDocuments(updated);
+
+          if (projectId) {
+            const draftSaved = saveProjectDraft(projectId, snapshot);
+            scheduleProjectSave(projectId, snapshot);
+            if (!draftSaved) setSaveStatus("error");
+          } else {
+            try {
               saveDocuments(updated);
+              setSaveStatus("saved");
+            } catch {
+              setSaveStatus("error");
             }
-            return updated;
-          });
-        }, AUTOSAVE_DELAY);
+          }
+        }
       }
     },
     onSelectionUpdate: () => setContextMenu(null),
@@ -387,7 +490,26 @@ export default function App() {
         pendingWordsRef.current.clear();
       }
     }
-  }, [currentDocId]); // eslint-disable-line
+  }, [currentDocId, currentProjectId]); // eslint-disable-line
+
+  // Flush delayed disk writes whenever the app is hidden or closed. The local
+  // draft is already synchronous, so it remains recoverable even if shutdown
+  // interrupts the network request.
+  useEffect(() => {
+    const flush = () => { flushPendingProjectSaves(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      flush();
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [flushPendingProjectSaves]);
 
   // Global event handlers
   useEffect(() => {
@@ -404,7 +526,8 @@ export default function App() {
     return () => {
       destroyedRef.current = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (autosaveRef.current) clearTimeout(autosaveRef.current);
+      autosaveTimersRef.current.forEach((timer) => clearTimeout(timer));
+      autosaveTimersRef.current.clear();
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
@@ -415,13 +538,18 @@ export default function App() {
     const handleKey = (e) => {
       if (e.key === "F11") { e.preventDefault(); setIsFocusMode((v) => !v); }
       if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setIsAIPanelOpen((v) => !v); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        flushPendingProjectSaves();
+      }
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   // ── Project management ──
   const createProject = useCallback(async (title) => {
+    await flushPendingProjectSaves();
     try {
       const res = await fetch(`${API_URL}/fs/projects`, {
         method: "POST",
@@ -431,44 +559,56 @@ export default function App() {
       if (res.ok) {
         const project = await res.json();
         setProjects((prev) => [project, ...prev]);
+        currentProjectIdRef.current = project.id;
         setCurrentProjectId(project.id);
         setIsProjectManagerOpen(false);
         setIsHome(false);
       }
     } catch {}
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   const openProject = useCallback((id) => {
+    flushPendingProjectSaves();
+    currentProjectIdRef.current = id;
     setCurrentProjectId(id);
     setIsProjectManagerOpen(false);
     setIsHome(false);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   const startQuickWrite = useCallback(() => {
+    flushPendingProjectSaves();
+    currentProjectIdRef.current = null;
     setCurrentProjectId(null);
     setIsHome(false);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   const goHome = useCallback(() => {
+    flushPendingProjectSaves();
     setIsHome(true);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   const deleteProject = useCallback(async (id) => {
     try {
+      await flushPendingProjectSaves();
       await fetch(`${API_URL}/fs/projects/${id}`, { method: "DELETE" });
+      clearProjectDrafts(id);
       setProjects((prev) => prev.filter((p) => p.id !== id));
       if (currentProjectId === id) {
+        currentProjectIdRef.current = null;
         setCurrentProjectId(null);
       }
     } catch {}
-  }, [currentProjectId]);
+  }, [currentProjectId, flushPendingProjectSaves]);
 
   const exitProject = useCallback(() => {
+    flushPendingProjectSaves();
+    currentProjectIdRef.current = null;
     setCurrentProjectId(null);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   // ── Document management ──
   const createDocument = useCallback(async () => {
+    await flushPendingProjectSaves();
     const doc = {
       id: genId(),
       title: projectMode ? "فصل جديد" : "مستند جديد",
@@ -485,36 +625,57 @@ export default function App() {
           body: JSON.stringify(doc),
         });
         const saved = res.ok ? await res.json() : doc;
-        setDocuments((prev) => [...prev, saved]);
+        if (!res.ok) {
+          saveProjectDraft(currentProjectId, saved);
+          setSaveStatus("error");
+        }
+        setDocuments((prev) => {
+          const next = [...prev, saved];
+          documentsRef.current = next;
+          return next;
+        });
+        currentDocIdRef.current = saved.id;
         setCurrentDocId(saved.id);
         // Refresh project docCount
         loadProjects();
       } catch {
-        setDocuments((prev) => [...prev, doc]);
+        saveProjectDraft(currentProjectId, doc);
+        setSaveStatus("error");
+        setDocuments((prev) => {
+          const next = [...prev, doc];
+          documentsRef.current = next;
+          return next;
+        });
+        currentDocIdRef.current = doc.id;
         setCurrentDocId(doc.id);
       }
     } else {
       setDocuments((prev) => {
         const updated = [doc, ...prev];
         saveDocuments(updated);
+        documentsRef.current = updated;
         return updated;
       });
+      currentDocIdRef.current = doc.id;
       setCurrentDocId(doc.id);
     }
     setIsDocManagerOpen(false);
     return doc;
-  }, [projectMode, currentProjectId, loadProjects]);
+  }, [projectMode, currentProjectId, loadProjects, flushPendingProjectSaves]);
 
   const openDocument = useCallback((id) => {
+    flushPendingProjectSaves();
+    currentDocIdRef.current = id;
     setCurrentDocId(id);
     setIsDocManagerOpen(false);
     sessionStartWordsRef.current = null;
     setSessionWords(0);
-  }, []);
+  }, [flushPendingProjectSaves]);
 
   const deleteDocument = useCallback(async (id) => {
     if (projectMode) {
       try {
+        await cancelDocumentSave(currentProjectId, id);
         await fetch(`${API_URL}/fs/projects/${currentProjectId}/docs/${id}`, { method: "DELETE" });
         loadProjects(); // refresh docCount
       } catch {}
@@ -522,37 +683,39 @@ export default function App() {
     setDocuments((prev) => {
       const updated = prev.filter((d) => d.id !== id);
       if (!projectMode) saveDocuments(updated);
-      if (currentDocId === id) setCurrentDocId(updated.length > 0 ? updated[0].id : null);
+      documentsRef.current = updated;
+      if (currentDocId === id) {
+        const nextId = updated.length > 0 ? updated[0].id : null;
+        currentDocIdRef.current = nextId;
+        setCurrentDocId(nextId);
+      }
       return updated;
     });
-  }, [projectMode, currentProjectId, currentDocId, loadProjects]);
+  }, [projectMode, currentProjectId, currentDocId, loadProjects, cancelDocumentSave]);
 
   const updateDocTitle = useCallback((title) => {
-    if (!currentDocId) return;
-    setDocuments((prev) => {
-      const updated = prev.map((d) =>
-        d.id === currentDocId ? { ...d, title, updatedAt: new Date().toISOString() } : d
-      );
-      if (!currentProjectIdRef.current) saveDocuments(updated);
-      return updated;
-    });
-    // Debounced save to FS
-    if (currentProjectIdRef.current) {
-      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
-      titleDebounceRef.current = setTimeout(() => {
-        const doc = documentsRef.current.find((d) => d.id === currentDocId);
-        if (doc) {
-          fetch(`${API_URL}/fs/projects/${currentProjectIdRef.current}/docs/${currentDocId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...doc, title }),
-          }).catch(() => {
-            showToast("فشل حفظ العنوان", "error");
-          });
-        }
-      }, 800);
+    const docId = currentDocIdRef.current;
+    const projectId = currentProjectIdRef.current;
+    const existing = documentsRef.current.find((doc) => doc.id === docId);
+    if (!docId || !existing) return;
+    const snapshot = { ...existing, title, updatedAt: new Date().toISOString() };
+    const updated = documentsRef.current.map((doc) => doc.id === docId ? snapshot : doc);
+    documentsRef.current = updated;
+    setDocuments(updated);
+
+    if (projectId) {
+      const draftSaved = saveProjectDraft(projectId, snapshot);
+      scheduleProjectSave(projectId, snapshot, 400);
+      if (!draftSaved) setSaveStatus("error");
+    } else {
+      try {
+        saveDocuments(updated);
+        setSaveStatus("saved");
+      } catch {
+        setSaveStatus("error");
+      }
     }
-  }, [currentDocId]);
+  }, [scheduleProjectSave]);
 
   const applySuggestion = useCallback(() => {
     if (!editor || !contextMenu) return;
@@ -776,6 +939,7 @@ export default function App() {
     if (action === "export-project") {
       if (!currentProjectId) return;
       try {
+        await flushPendingProjectSaves();
         const res = await fetch(`${API_URL}/backup/export-project?id=${encodeURIComponent(currentProjectId)}`);
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -801,7 +965,7 @@ export default function App() {
       }
       return;
     }
-  }, [editor, currentDoc, currentProject, currentProjectId, showToast, loadProjects]);
+  }, [editor, currentDoc, currentProject, currentProjectId, showToast, loadProjects, flushPendingProjectSaves]);
 
   // Called when ImportDialog confirms with the chosen target.
   const confirmImport = useCallback(async ({ target, title: importTitle }) => {
@@ -839,7 +1003,16 @@ export default function App() {
           body: JSON.stringify(doc),
         });
         const saved = res.ok ? await res.json() : doc;
-        setDocuments((prev) => [...prev, saved]);
+        if (!res.ok) {
+          saveProjectDraft(currentProjectId, saved);
+          setSaveStatus("error");
+        }
+        setDocuments((prev) => {
+          const next = [...prev, saved];
+          documentsRef.current = next;
+          return next;
+        });
+        currentDocIdRef.current = saved.id;
         setCurrentDocId(saved.id);
         loadProjects();
         showToast(`تم استيراد ${importTitle}`, "success");
@@ -866,11 +1039,15 @@ export default function App() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        await fetch(`${API_URL}/fs/projects/${project.id}/docs`, {
+        const docRes = await fetch(`${API_URL}/fs/projects/${project.id}/docs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(doc),
         });
+        if (!docRes.ok) {
+          saveProjectDraft(project.id, doc);
+          setSaveStatus("error");
+        }
         await loadProjects();
         openProject(project.id);
         showToast(`تم إنشاء «${importTitle}»`, "success");
@@ -1029,6 +1206,7 @@ export default function App() {
         model={settings.provider === "openai_compat" ? settings.apiModel : settings.model}
         settings={settings}
         docCount={documents.length}
+        saveStatus={saveStatus}
         sessionWords={sessionWords}
         writingGoal={settings.writingGoal || 0}
         onStartOllama={startOllama}
