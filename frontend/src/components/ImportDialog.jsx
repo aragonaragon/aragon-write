@@ -53,8 +53,8 @@ export default function ImportDialog({
 
         <div className="modal__body">
           <div className="import-source">
-            <FileText size={18} style={{ flexShrink: 0, color: "var(--primary)" }} />
-            <div style={{ minWidth: 0 }}>
+            <span className="import-source__icon"><FileText size={18} /></span>
+            <div className="import-source__body">
               <div className="import-source__name">{sourceName}</div>
               <div className="import-source__meta">
                 {wordCount > 0 ? `${wordCount.toLocaleString("ar-EG")} كلمة` : ""}
@@ -63,66 +63,66 @@ export default function ImportDialog({
           </div>
 
           {warning && (
-            <div className="import-warning">⚠ {warning}</div>
+            <div className="import-warning">{warning}</div>
           )}
 
-          <div className="settings-section__title" style={{ marginTop: 16 }}>وين تبي تضع المحتوى؟</div>
+          <div className="import-heading">وين تبي تضع المحتوى؟</div>
 
-          <label className={`import-option${target === "new-doc" ? " active" : ""} ${!projectMode ? "disabled" : ""}`}>
-            <input
-              type="radio"
-              name="import-target"
-              value="new-doc"
-              checked={target === "new-doc"}
-              onChange={() => setTarget("new-doc")}
-              disabled={!projectMode}
-            />
-            <div className="import-option__icon"><FileText size={14} /></div>
-            <div>
-              <div className="import-option__title">فصل جديد في المشروع الحالي</div>
-              <div className="import-option__desc">
-                {projectMode ? "يضيف فصل بمحتوى الملف للمشروع المفتوح" : "يحتاج فتح مشروع أولاً"}
-              </div>
-            </div>
-          </label>
+          <div className="import-options">
+            <label className={`import-option${target === "new-doc" ? " active" : ""}${!projectMode ? " disabled" : ""}`}>
+              <input
+                type="radio"
+                name="import-target"
+                value="new-doc"
+                checked={target === "new-doc"}
+                onChange={() => setTarget("new-doc")}
+                disabled={!projectMode}
+              />
+              <span className="import-option__icon"><FileText size={14} /></span>
+              <span className="import-option__body">
+                <span className="import-option__title">فصل جديد في المشروع الحالي</span>
+                <span className="import-option__desc">
+                  {projectMode ? "يضيف فصلاً بمحتوى الملف للمشروع المفتوح" : "يحتاج فتح مشروع أولاً"}
+                </span>
+              </span>
+            </label>
 
-          <label className={`import-option${target === "new-project" ? " active" : ""}`}>
-            <input
-              type="radio"
-              name="import-target"
-              value="new-project"
-              checked={target === "new-project"}
-              onChange={() => setTarget("new-project")}
-            />
-            <div className="import-option__icon"><BookPlus size={14} /></div>
-            <div>
-              <div className="import-option__title">مشروع جديد بالكامل</div>
-              <div className="import-option__desc">
-                ينشئ مشروع جديد فيه فصل واحد بمحتوى الملف
-              </div>
-            </div>
-          </label>
+            <label className={`import-option${target === "new-project" ? " active" : ""}`}>
+              <input
+                type="radio"
+                name="import-target"
+                value="new-project"
+                checked={target === "new-project"}
+                onChange={() => setTarget("new-project")}
+              />
+              <span className="import-option__icon"><BookPlus size={14} /></span>
+              <span className="import-option__body">
+                <span className="import-option__title">مشروع جديد بالكامل</span>
+                <span className="import-option__desc">ينشئ مشروعاً جديداً فيه فصل واحد بمحتوى الملف</span>
+              </span>
+            </label>
 
-          <label className={`import-option${target === "append" ? " active" : ""} ${!currentDocTitle ? "disabled" : ""}`}>
-            <input
-              type="radio"
-              name="import-target"
-              value="append"
-              checked={target === "append"}
-              onChange={() => setTarget("append")}
-              disabled={!currentDocTitle}
-            />
-            <div className="import-option__icon"><ArrowDown size={14} /></div>
-            <div>
-              <div className="import-option__title">إلحاق بنهاية الفصل الحالي</div>
-              <div className="import-option__desc">
-                {currentDocTitle ? `يضيف للمحتوى في «${currentDocTitle}»` : "يحتاج فتح فصل أولاً"}
-              </div>
-            </div>
-          </label>
+            <label className={`import-option${target === "append" ? " active" : ""}${!currentDocTitle ? " disabled" : ""}`}>
+              <input
+                type="radio"
+                name="import-target"
+                value="append"
+                checked={target === "append"}
+                onChange={() => setTarget("append")}
+                disabled={!currentDocTitle}
+              />
+              <span className="import-option__icon"><ArrowDown size={14} /></span>
+              <span className="import-option__body">
+                <span className="import-option__title">إلحاق بنهاية الفصل الحالي</span>
+                <span className="import-option__desc">
+                  {currentDocTitle ? `يضيف للمحتوى في «${currentDocTitle}»` : "يحتاج فتح فصل أولاً"}
+                </span>
+              </span>
+            </label>
+          </div>
 
           {target !== "append" && (
-            <div className="settings-field" style={{ marginTop: 12 }}>
+            <div className="settings-field settings-field--spaced">
               <label>الاسم</label>
               <input
                 className="settings-input"
@@ -130,7 +130,6 @@ export default function ImportDialog({
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submit()}
                 placeholder={fallbackTitle}
-                style={{ direction: "rtl", textAlign: "right" }}
               />
               <span className="settings-field__hint">
                 {target === "new-project" ? "اسم المشروع الجديد" : "اسم الفصل الجديد"}

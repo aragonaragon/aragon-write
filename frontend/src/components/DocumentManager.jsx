@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, FilePlus, Trash2, BookOpen, LogOut } from "lucide-react";
+import { X, FilePlus, Trash2, BookOpen, LogOut, FileText } from "lucide-react";
 
 function formatDate(iso) {
   if (!iso) return "";
@@ -64,19 +64,20 @@ export default function DocumentManager({
     downloadFile(md, `${doc.title}.md`, "text/markdown;charset=utf-8");
   };
 
+  const unitLabel = projectMode ? "فصل" : "مستند";
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={projectMode ? "فصول المشروع" : "المستندات"}>
+      <div className="modal modal--library" role="dialog" aria-modal="true" aria-label={projectMode ? "فصول المشروع" : "المستندات"}>
         <div className="modal__header">
-          <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 className="modal__title">
             {projectMode && <BookOpen size={18} />}
             {projectMode ? (projectTitle || "المشروع") : "المستندات"}
           </h2>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="modal__header-actions">
             {projectMode && onExitProject && (
               <button
-                className="btn btn-secondary"
-                style={{ fontSize: 12, padding: "4px 10px", gap: 4 }}
+                className="btn btn-secondary btn--compact"
                 onClick={() => { onExitProject(); onClose(); }}
                 title="الخروج من المشروع"
               >
@@ -90,46 +91,35 @@ export default function DocumentManager({
 
         <div className="modal__body">
           <div className="doc-grid">
-            {/* New document card */}
             <button className="doc-new-card" onClick={onCreate}>
-              <FilePlus size={28} />
+              <FilePlus size={26} />
               <span>{projectMode ? "فصل جديد" : "مستند جديد"}</span>
             </button>
 
-            {/* Document cards */}
-            {documents.map((doc) => (
+            {documents.map((doc, index) => (
               <div
                 key={doc.id}
                 className={`doc-card${doc.id === currentDocId ? " active" : ""}`}
                 onClick={() => onOpen(doc.id)}
               >
-                <div className="doc-card__icon">📄</div>
+                <div className="doc-card__head">
+                  <span className="doc-card__index">{index + 1}</span>
+                  <span className="doc-card__icon"><FileText size={14} /></span>
+                </div>
                 <div className="doc-card__title">{doc.title || "بدون عنوان"}</div>
                 <div className="doc-card__meta">{formatDate(doc.updatedAt)}</div>
 
-                {/* Export dropdown on hover */}
-                <div style={{ display: "flex", gap: 4, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
-                  <button
-                    style={{ fontSize: 10, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface)", color: "var(--text-muted)", cursor: "pointer" }}
-                    onClick={() => exportTxt(doc)}
-                    title="تصدير TXT"
-                  >TXT</button>
-                  <button
-                    style={{ fontSize: 10, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface)", color: "var(--text-muted)", cursor: "pointer" }}
-                    onClick={() => exportHtml(doc)}
-                    title="تصدير HTML"
-                  >HTML</button>
-                  <button
-                    style={{ fontSize: 10, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface)", color: "var(--text-muted)", cursor: "pointer" }}
-                    onClick={() => exportMd(doc)}
-                    title="تصدير Markdown"
-                  >MD</button>
+                <div className="doc-card__exports" onClick={(e) => e.stopPropagation()}>
+                  <button className="doc-card__export" onClick={() => exportTxt(doc)} title="تصدير TXT">TXT</button>
+                  <button className="doc-card__export" onClick={() => exportHtml(doc)} title="تصدير HTML">HTML</button>
+                  <button className="doc-card__export" onClick={() => exportMd(doc)} title="تصدير Markdown">MD</button>
                 </div>
 
                 <button
                   className="doc-card__delete"
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(doc.id); }}
                   title="حذف"
+                  aria-label={`حذف ${doc.title || "بدون عنوان"}`}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -139,23 +129,22 @@ export default function DocumentManager({
         </div>
 
         <div className="modal__footer">
-          <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: "auto" }}>
-            {documents.length} {projectMode ? "فصل" : "مستند"} | {projectMode ? "محفوظ على القرص" : "حفظ تلقائي"}
+          <span className="modal__footer-note">
+            {documents.length} {unitLabel} · {projectMode ? "محفوظ على القرص" : "حفظ تلقائي"}
           </span>
           <button className="btn btn-secondary" onClick={onClose}>إغلاق</button>
         </div>
       </div>
 
-      {/* Confirm delete dialog */}
       {confirmDelete && (
-        <div className="modal-overlay" style={{ zIndex: 400 }} onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
+        <div className="modal-overlay modal-overlay--top" onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
           <div className="modal modal--sm" role="alertdialog" aria-modal="true" aria-label="تأكيد حذف المستند">
             <div className="modal__header">
               <h2 className="modal__title">تأكيد الحذف</h2>
             </div>
             <div className="modal__body">
-              <p style={{ color: "var(--text-secondary)", lineHeight: 1.8 }}>
-                هل أنت متأكد من حذف هذا المستند؟ لا يمكن التراجع عن هذا الإجراء.
+              <p className="modal__text">
+                هل أنت متأكد من حذف هذا {unitLabel}؟ لا يمكن التراجع عن هذا الإجراء.
               </p>
             </div>
             <div className="modal__footer">

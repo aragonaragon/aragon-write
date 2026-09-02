@@ -24,7 +24,7 @@ export default class ErrorBoundary extends React.Component {
       return (
         <div className="error-boundary">
           <div className="error-boundary__box">
-            <AlertTriangle size={48} style={{ color: "#ea4335", marginBottom: 16 }} />
+            <AlertTriangle size={48} className="error-boundary__icon" />
             <h1>عذراً، حدث خطأ غير متوقع</h1>
             <p>لا تقلق — كتاباتك محفوظة. اضغط زر التحديث للمتابعة.</p>
             {this.state.error?.message && (

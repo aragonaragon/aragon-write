@@ -35,11 +35,16 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
     setCreatingNew(false);
   };
 
+  const cancelCreate = () => {
+    setCreatingNew(false);
+    setNewTitle("");
+  };
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal modal--library" role="dialog" aria-modal="true" aria-label="مكتبتي">
         <div className="modal__header">
-          <h2 className="modal__title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 className="modal__title">
             <BookOpen size={20} />
             مكتبتي
           </h2>
@@ -50,21 +55,18 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
           {creatingNew ? (
             <div className="project-new-form">
               <input
-                className="settings-input"
+                className="settings-input settings-input--lg"
                 placeholder="اسم المشروع..."
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleCreate();
-                  if (e.key === "Escape") { setCreatingNew(false); setNewTitle(""); }
+                  if (e.key === "Escape") cancelCreate();
                 }}
                 autoFocus
-                style={{ direction: "rtl", textAlign: "right", fontSize: 16, marginBottom: 12 }}
               />
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                <button className="btn btn-secondary" onClick={() => { setCreatingNew(false); setNewTitle(""); }}>
-                  إلغاء
-                </button>
+              <div className="project-new-form__actions">
+                <button className="btn btn-secondary" onClick={cancelCreate}>إلغاء</button>
                 <button className="btn btn-primary" onClick={handleCreate} disabled={!newTitle.trim()}>
                   <BookPlus size={15} />
                   إنشاء
@@ -73,9 +75,8 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
             </div>
           ) : (
             <div className="project-grid">
-              {/* New project card */}
               <button className="project-new-card" onClick={() => setCreatingNew(true)}>
-                <BookPlus size={32} />
+                <BookPlus size={28} />
                 <span>مشروع جديد</span>
               </button>
 
@@ -104,23 +105,17 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
                     className="project-card__delete"
                     onClick={(e) => { e.stopPropagation(); setConfirmDelete(project.id); }}
                     title="حذف المشروع"
+                    aria-label={`حذف مشروع ${project.title || "بدون عنوان"}`}
                   >
                     <Trash2 size={13} />
                   </button>
                 </div>
               ))}
 
-              {projects.length === 0 && !creatingNew && (
-                <div style={{
-                  gridColumn: "1 / -1",
-                  padding: "32px 16px",
-                  textAlign: "center",
-                  color: "var(--text-muted)",
-                  lineHeight: 2,
-                  fontSize: 14,
-                }}>
-                  <div style={{ fontSize: 36, marginBottom: 8 }}>📚</div>
-                  <div>ليس لديك أي مشروع حتى الآن.</div>
+              {projects.length === 0 && (
+                <div className="project-empty">
+                  <div className="project-empty__icon"><BookOpen size={24} /></div>
+                  <div>ما عندك أي مشروع حتى الآن.</div>
                   <div>اضغط «مشروع جديد» لإنشاء أول مشروع.</div>
                 </div>
               )}
@@ -129,24 +124,23 @@ export default function ProjectManager({ projects, currentProjectId, onOpen, onC
         </div>
 
         <div className="modal__footer">
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            <FolderOpen size={12} style={{ display: "inline", marginLeft: 4 }} />
+          <span className="modal__footer-note">
+            <FolderOpen size={12} />
             المستندات محفوظة في مجلد المشاريع على جهازك
           </span>
           <button className="btn btn-secondary" onClick={onClose}>إغلاق</button>
         </div>
       </div>
 
-      {/* Confirm delete */}
       {confirmDelete && (
-        <div className="modal-overlay" style={{ zIndex: 400 }}
+        <div className="modal-overlay modal-overlay--top"
           onClick={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
           <div className="modal modal--sm" role="alertdialog" aria-modal="true" aria-label="تأكيد حذف المشروع">
             <div className="modal__header">
               <h2 className="modal__title">حذف المشروع</h2>
             </div>
             <div className="modal__body">
-              <p style={{ color: "var(--text-secondary)", lineHeight: 1.9 }}>
+              <p className="modal__text">
                 سيُحذف المشروع وجميع فصوله من القرص الصلب نهائياً.<br />
                 لا يمكن التراجع عن هذا الإجراء.
               </p>

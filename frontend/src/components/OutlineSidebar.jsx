@@ -59,7 +59,6 @@ export default function OutlineSidebar({ editor, isOpen }) {
                 data-level={h.level}
                 onClick={() => scrollToHeading(h.pos)}
                 title={h.text}
-                style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "right" }}
               >
                 {h.text || "(بدون نص)"}
               </button>

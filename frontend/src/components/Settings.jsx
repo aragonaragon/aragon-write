@@ -24,6 +24,15 @@ const PROVIDER_PRESETS = {
   },
 };
 
+function StatusLine({ ok, children }) {
+  return (
+    <div className={`settings-status${ok ? " is-ok" : " is-err"}`}>
+      {ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+      <span>{children}</span>
+    </div>
+  );
+}
+
 export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllamaStatusChange }) {
   const [models, setModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -154,9 +163,11 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
     }
   };
 
+  const isExternal = settings.provider === "openai_compat";
+
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label="الإعدادات">
+      <div className="modal modal--settings" role="dialog" aria-modal="true" aria-label="الإعدادات">
         <div className="modal__header">
           <h2 className="modal__title">الإعدادات</h2>
           <button className="btn-icon" onClick={onClose} aria-label="إغلاق الإعدادات"><X size={18} /></button>
@@ -165,13 +176,15 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
         <div className="modal__body">
 
           {/* ── مصدر الذكاء الاصطناعي ── */}
-          <div className="settings-section">
+          <section className="settings-section">
             <div className="settings-section__title">مصدر الذكاء الاصطناعي</div>
 
-            <div className="provider-toggle">
+            <div className="provider-toggle" role="tablist">
               <button
                 type="button"
-                className={`provider-tab${settings.provider !== "openai_compat" ? " active" : ""}`}
+                role="tab"
+                aria-selected={!isExternal}
+                className={`provider-tab${!isExternal ? " active" : ""}`}
                 onClick={() => onUpdate({ provider: "ollama" })}
               >
                 <HardDrive size={14} />
@@ -179,7 +192,9 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
               </button>
               <button
                 type="button"
-                className={`provider-tab${settings.provider === "openai_compat" ? " active" : ""}`}
+                role="tab"
+                aria-selected={isExternal}
+                className={`provider-tab${isExternal ? " active" : ""}`}
                 onClick={() => onUpdate({ provider: "openai_compat" })}
               >
                 <Cloud size={14} />
@@ -187,7 +202,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
               </button>
             </div>
 
-            {settings.provider === "openai_compat" && (
+            {isExternal && (
               <>
                 <div className="settings-field">
                   <label>إعدادات سريعة</label>
@@ -235,26 +250,28 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                       className="btn-icon"
                       onClick={() => setShowKey((v) => !v)}
                       title={showKey ? "إخفاء" : "إظهار"}
+                      aria-label={showKey ? "إخفاء المفتاح" : "إظهار المفتاح"}
                     >
                       {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                  <span className="settings-field__hint" style={{ color: "#d97706" }}>
-                    ⚠ المفتاح يُحفظ على جهازك في localStorage بدون تشفير. لا تشاركه ولا تستخدمه على جهاز مشترك.
+                  <span className="settings-field__hint settings-field__hint--warn">
+                    المفتاح يُحفظ على جهازك في localStorage بدون تشفير. لا تشاركه ولا تستخدمه على جهاز مشترك.
                   </span>
                 </div>
 
                 <div className="settings-field">
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div className="settings-field__head">
                     <label>الموديل</label>
                     <button
                       type="button"
-                      className="btn-icon"
+                      className={`btn-icon${loadingExtModels ? " is-spinning" : ""}`}
                       onClick={fetchExternalModels}
                       disabled={loadingExtModels || !settings.apiBaseUrl}
                       title="جلب قائمة الموديلات"
+                      aria-label="جلب قائمة الموديلات"
                     >
-                      <RefreshCw size={14} style={{ animation: loadingExtModels ? "spin 1s linear infinite" : "none" }} />
+                      <RefreshCw size={14} />
                     </button>
                   </div>
                   {extModels.length > 0 ? (
@@ -284,58 +301,40 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                     className="btn btn-secondary"
                     onClick={testExternalConnection}
                     disabled={testingExt || !settings.apiBaseUrl}
-                    style={{ display: "flex", alignItems: "center", gap: 6 }}
                   >
                     <Plug size={13} />
                     {testingExt ? "جاري الاختبار..." : "اختبار الاتصال"}
                   </button>
                   {extTest && (
-                    <div
-                      style={{
-                        display: "flex", alignItems: "center", gap: 6,
-                        color: extTest.ok ? "#34a853" : "#ea4335",
-                        fontSize: 13, marginTop: 8,
-                      }}
-                    >
-                      {extTest.ok ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                    <StatusLine ok={!!extTest.ok}>
                       {extTest.ok ? "تم الاتصال بنجاح" : extTest.error}
-                    </div>
+                    </StatusLine>
                   )}
                 </div>
 
-                <div
-                  style={{
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--radius-md)",
-                    padding: "10px 12px",
-                    fontSize: 12,
-                    color: "var(--text-secondary)",
-                    lineHeight: 1.8,
-                  }}
-                >
-                  ℹ <strong>ملاحظات:</strong> بياناتك المكتوبة (المستندات والمشاريع) تبقى محلية على جهازك.
-                  فقط طلبات المساعد ترسل إلى المزود الخارجي.<br />
-                  ⚠ <strong>التدقيق الإملائي يتعطّل تلقائياً</strong> في وضع API لتجنّب التكاليف.
+                <div className="settings-note">
+                  <p><strong>ملاحظة:</strong> بياناتك المكتوبة (المستندات والمشاريع) تبقى محلية على جهازك. فقط طلبات المساعد تُرسل إلى المزود الخارجي.</p>
+                  <p><strong>التدقيق الإملائي يتعطّل تلقائياً</strong> في وضع API لتجنّب التكاليف.</p>
                 </div>
               </>
             )}
-          </div>
+          </section>
 
           {/* ── Ollama ── */}
-          <div className="settings-section">
-            <div className="settings-section__title">إعدادات Ollama (الذكاء الاصطناعي)</div>
+          <section className="settings-section">
+            <div className="settings-section__title">إعدادات Ollama</div>
 
             <div className="settings-field">
               <label>عنوان Ollama URL</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="settings-row">
                 <input
                   className="settings-input"
                   value={ollamaUrl}
                   onChange={(e) => setOllamaUrl(e.target.value)}
                   placeholder="http://localhost:11434"
+                  dir="ltr"
                 />
-                <button className="btn btn-secondary" onClick={saveOllamaUrl} style={{ flexShrink: 0 }}>
+                <button className="btn btn-secondary" onClick={saveOllamaUrl}>
                   حفظ
                 </button>
               </div>
@@ -343,26 +342,28 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
             </div>
 
             <div className="settings-field">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div className="settings-field__head">
                 <label>الموديل النشط</label>
-                <button className="btn-icon" onClick={fetchModels} title="تحديث" disabled={loadingModels}>
-                  <RefreshCw size={14} style={{ animation: loadingModels ? "spin 1s linear infinite" : "none" }} />
+                <button
+                  className={`btn-icon${loadingModels ? " is-spinning" : ""}`}
+                  onClick={fetchModels}
+                  title="تحديث"
+                  aria-label="تحديث قائمة الموديلات"
+                  disabled={loadingModels}
+                >
+                  <RefreshCw size={14} />
                 </button>
               </div>
 
               {testStatus === "success" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#34a853", fontSize: 13, marginBottom: 8 }}>
-                  <CheckCircle size={14} />Ollama يعمل — {models.length} موديل متاح
-                </div>
+                <StatusLine ok>Ollama يعمل — {models.length} موديل متاح</StatusLine>
               )}
               {testStatus === "error" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#ea4335", fontSize: 13, marginBottom: 8 }}>
-                  <AlertCircle size={14} />{modelError}
-                </div>
+                <StatusLine ok={false}>{modelError}</StatusLine>
               )}
 
               {models.length > 0 ? (
-                <select className="settings-select" value={settings.model} onChange={(e) => onUpdate({ model: e.target.value })}>
+                <select className="settings-select" value={settings.model} onChange={(e) => onUpdate({ model: e.target.value })} dir="ltr">
                   {models.map((m) => <option key={m.name} value={m.name}>{m.name}</option>)}
                 </select>
               ) : (
@@ -371,123 +372,121 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                   value={settings.model}
                   onChange={(e) => onUpdate({ model: e.target.value })}
                   placeholder="مثال: gemma4:e4b أو gemma2:9b"
+                  dir="ltr"
                 />
               )}
               <span className="settings-field__hint">
-                الموديلات الموصى بها للعربية: gemma4:e4b (خفيف وسريع)، gemma2:9b (متوازن)، gemma4:26b (الأفضل للأجهزة القوية)
+                الموصى به للعربية: gemma4:e4b (خفيف وسريع)، gemma2:9b (متوازن)، gemma4:26b (للأجهزة القوية)
               </span>
             </div>
 
-            {/* Kill / Start Ollama */}
             <div className="settings-field">
               <label>تشغيل / إيقاف Ollama</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="settings-row settings-row--split">
                 <button
                   className="btn btn-secondary"
                   onClick={startOllama}
                   disabled={!!ollamaAction}
-                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 >
-                  <Play size={13} style={{ color: "#34a853" }} />
+                  <Play size={13} className="icon-success" />
                   {ollamaAction === "starting" ? "جاري التشغيل..." : "تشغيل Ollama"}
                 </button>
                 <button
                   className="btn btn-danger"
                   onClick={killOllama}
                   disabled={!!ollamaAction}
-                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                 >
                   <Power size={13} />
                   {ollamaAction === "killing" ? "جاري الإيقاف..." : "إيقاف Ollama"}
                 </button>
               </div>
               <span className="settings-field__hint">
-                إيقاف Ollama يحرر الذاكرة (RAM) تماماً. شغّله مجدداً عند الحاجة للـ AI.
+                إيقاف Ollama يحرر الذاكرة (RAM) تماماً. شغّله مجدداً عند الحاجة للمساعد.
               </span>
             </div>
-          </div>
+          </section>
 
           {/* ── المظهر ── */}
-          <div className="settings-section">
+          <section className="settings-section">
             <div className="settings-section__title">المظهر</div>
             <div className="settings-field">
               <label>وضع العرض</label>
               <div className="theme-options">
-                <button className={`theme-option${settings.theme === "light" ? " active" : ""}`} onClick={() => onUpdate({ theme: "light" })}>
-                  <div className="theme-swatch light" />فاتح
-                </button>
                 <button className={`theme-option${settings.theme === "dark" ? " active" : ""}`} onClick={() => onUpdate({ theme: "dark" })}>
-                  <div className="theme-swatch dark" />داكن
+                  <span className="theme-swatch dark" />
+                  <span>ليل</span>
+                </button>
+                <button className={`theme-option${settings.theme === "light" ? " active" : ""}`} onClick={() => onUpdate({ theme: "light" })}>
+                  <span className="theme-swatch light" />
+                  <span>نهار</span>
                 </button>
                 <button className={`theme-option${settings.theme === "sepia" ? " active" : ""}`} onClick={() => onUpdate({ theme: "sepia" })}>
-                  <div className="theme-swatch sepia" />عاجي
+                  <span className="theme-swatch sepia" />
+                  <span>ورق</span>
                 </button>
               </div>
             </div>
-          </div>
+          </section>
 
           {/* ── الكتابة ── */}
-          <div className="settings-section">
+          <section className="settings-section">
             <div className="settings-section__title">الكتابة</div>
 
             <div className="settings-field">
               <label>هدف الكتابة اليومي (كلمة)</label>
               <input
                 type="number"
-                className="settings-input"
+                className="settings-input settings-input--number"
                 value={settings.writingGoal || ""}
                 onChange={(e) => onUpdate({ writingGoal: parseInt(e.target.value) || 0 })}
                 placeholder="0 = بدون هدف"
                 min="0"
                 max="50000"
-                style={{ textAlign: "right", direction: "rtl" }}
               />
               <span className="settings-field__hint">يظهر شريط التقدم في أسفل الشاشة عند تحديد هدف.</span>
             </div>
 
-            <div className="settings-field">
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={settings.typewriterMode || false}
-                  onChange={(e) => onUpdate({ typewriterMode: e.target.checked })}
-                  style={{ width: 16, height: 16 }}
-                />
-                وضع الآلة الكاتبة
-              </label>
-              <span className="settings-field__hint">يُثبّت المؤشر في منتصف الشاشة أثناء الكتابة.</span>
-            </div>
-          </div>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={settings.typewriterMode || false}
+                onChange={(e) => onUpdate({ typewriterMode: e.target.checked })}
+              />
+              <span className="settings-check__box" aria-hidden="true" />
+              <span className="settings-check__text">
+                <span className="settings-check__title">وضع الآلة الكاتبة</span>
+                <span className="settings-check__desc">يُثبّت المؤشر في منتصف الشاشة أثناء الكتابة.</span>
+              </span>
+            </label>
+          </section>
 
           {/* ── التدقيق الإملائي ── */}
-          <div className="settings-section">
+          <section className="settings-section">
             <div className="settings-section__title">التدقيق الإملائي</div>
-            <div className="settings-field">
-              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={settings.spellcheckEnabled}
-                  onChange={(e) => onUpdate({ spellcheckEnabled: e.target.checked })}
-                  style={{ width: 16, height: 16 }}
-                />
-                تفعيل التدقيق الإملائي التلقائي
-              </label>
-              <span className="settings-field__hint">
-                يستخدم Ollama لفحص الكلمات العربية. قد يستغرق وقتاً عند الكتابة.
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={settings.spellcheckEnabled}
+                onChange={(e) => onUpdate({ spellcheckEnabled: e.target.checked })}
+              />
+              <span className="settings-check__box" aria-hidden="true" />
+              <span className="settings-check__text">
+                <span className="settings-check__title">تفعيل التدقيق الإملائي التلقائي</span>
+                <span className="settings-check__desc">يستخدم Ollama لفحص الكلمات العربية. قد يستغرق وقتاً عند الكتابة.</span>
               </span>
-            </div>
-          </div>
+            </label>
+          </section>
 
           {/* ── عن التطبيق ── */}
-          <div className="settings-section">
+          <section className="settings-section">
             <div className="settings-section__title">عن التطبيق</div>
-            <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 2 }}>
-              <div>🔒 محلي 100% — بدون إنترنت، بدون سحابة، بدون تسجيل</div>
-              <div>💾 المشاريع محفوظة في مجلد على قرصك الصلب</div>
-              <div>🤖 يتكامل مع Ollama لتشغيل موديلات AI محلية</div>
-              <div>📝 محرر نصوص WYSIWYG مع دعم كامل للعربية RTL</div>
-            </div>
-          </div>
+            <ul className="settings-about">
+              <li>محلي 100% — بدون إنترنت، بدون سحابة، بدون تسجيل</li>
+              <li>المشاريع محفوظة في مجلد على قرصك الصلب</li>
+              <li>يتكامل مع Ollama لتشغيل موديلات ذكاء اصطناعي محلية</li>
+              <li>محرر نصوص مرئي مع دعم كامل للعربية من اليمين لليسار</li>
+            </ul>
+          </section>
         </div>
 
         <div className="modal__footer">

@@ -10,7 +10,7 @@ import {
 
 const FONTS = [
   { value: "Amiri, serif", label: "أميري" },
-  { value: "Cairo, sans-serif", label: "القاهرة" },
+  { value: "IBM Plex Sans Arabic, sans-serif", label: "بلكس" },
   { value: "Traditional Arabic, serif", label: "عربي تقليدي" },
   { value: "Georgia, serif", label: "Georgia" },
   { value: "Arial, sans-serif", label: "Arial" },
@@ -39,10 +39,10 @@ const BG_COLORS = [
   "#ff0000", "#fce5cd", "#d9ead3", "#c9daf8",
 ];
 
-function TBtn({ title, isActive, onClick, disabled, children, style }) {
+function TBtn({ title, isActive, onClick, disabled, children, style, className }) {
   return (
     <button
-      className={`toolbar-btn${isActive ? " is-active" : ""}`}
+      className={`toolbar-btn${isActive ? " is-active" : ""}${className ? ` ${className}` : ""}`}
       title={title}
       onClick={onClick}
       disabled={disabled}
@@ -197,7 +197,6 @@ export default function Toolbar({ editor }) {
           value={HEADINGS.find((h) => h.level === 0 ? !editor.isActive("heading") : editor.isActive("heading", { level: h.level }))?.level ?? 0}
           onChange={handleHeadingChange}
           title="نمط العنوان"
-          style={{ minWidth: 90 }}
         >
           {HEADINGS.map((h) => <option key={h.level} value={h.level}>{h.label}</option>)}
         </select>
@@ -207,7 +206,7 @@ export default function Toolbar({ editor }) {
 
       {/* Font family */}
       <div className="toolbar__group">
-        <select className="toolbar-select" onChange={handleFontChange} title="نوع الخط" style={{ minWidth: 100 }} defaultValue="">
+        <select className="toolbar-select" onChange={handleFontChange} title="نوع الخط" defaultValue="">
           <option value="">الخط</option>
           {FONTS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
         </select>
@@ -222,7 +221,7 @@ export default function Toolbar({ editor }) {
             <TBtn
               title="حجم الخط"
               onClick={() => setSizeOpen((v) => !v)}
-              style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 13, minWidth: 44 }}
+              className="toolbar-btn--wide"
             >
               <Type size={13} />
               {currentFontSize ? <span>{currentFontSize}</span> : null}
@@ -277,10 +276,10 @@ export default function Toolbar({ editor }) {
               title="لون النص"
               onClick={() => setTextColorOpen((v) => !v)}
               isActive={!!currentTextColor}
-              style={{ display: "flex", alignItems: "center", gap: 2 }}
+              className="toolbar-btn--combo"
             >
-              <span style={{ fontSize: 15, fontWeight: 700, color: currentTextColor || "var(--text)", lineHeight: 1 }}>A</span>
-              <span style={{ width: 14, height: 3, background: currentTextColor || "var(--text)", borderRadius: 1, display: "block" }} />
+              <span className="toolbar-color__glyph" style={{ "--swatch-color": currentTextColor || "var(--text)" }}>A</span>
+              <span className="toolbar-color__bar" style={{ "--swatch-color": currentTextColor || "var(--text)" }} />
             </TBtn>
           }
         >
@@ -301,10 +300,10 @@ export default function Toolbar({ editor }) {
               title="لون الخلفية"
               onClick={() => setBgColorOpen((v) => !v)}
               isActive={editor.isActive("highlight")}
-              style={{ display: "flex", alignItems: "center", gap: 2 }}
+              className="toolbar-btn--combo"
             >
               <Highlighter size={15} />
-              <span style={{ width: 14, height: 3, background: currentHighlight || "var(--text-muted)", borderRadius: 1, display: "block" }} />
+              <span className="toolbar-color__bar" style={{ "--swatch-color": currentHighlight || "var(--text-3)" }} />
             </TBtn>
           }
         >

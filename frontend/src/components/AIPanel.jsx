@@ -337,11 +337,11 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
             {(result || streaming || error) && (
               <div>
                 <div className="ai-section-label">
-                  النتيجة {streaming && <span className="ai-spinner" style={{ display: "inline-block" }} />}
+                  النتيجة {streaming && <span className="ai-spinner" />}
                 </div>
 
                 {error && (
-                  <div style={{ color: "#ea4335", fontSize: 13, padding: "8px 0" }}>
+                  <div className="ai-error">
                     ⚠ {error}
                   </div>
                 )}
@@ -372,9 +372,8 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
                     )}
                     {streaming && (
                       <button
-                        className="btn-sm"
+                        className="btn-sm btn-sm--full"
                         onClick={stop}
-                        style={{ marginTop: 6, width: "100%" }}
                       >
                         إيقاف
                       </button>
@@ -390,7 +389,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
           <div className="ai-chat">
             {chatMessages.length === 0 && (
               <div className="outline-empty">
-                <Sparkles size={24} style={{ margin: "0 auto 8px", display: "block", opacity: 0.4 }} />
+                <Sparkles size={24} className="ai-chat__empty-icon" />
                 اسأل عن أي شي — معلومة، فكرة، أو مساعدة في مستندك
               </div>
             )}
@@ -403,7 +402,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
                 return (
                   <div key={i} className={`chat-message ${msg.role}${isStreaming ? " streaming" : ""}`}>
                     {isStreaming
-                      ? (displayContent || <span className="ai-spinner" style={{ display: "inline-block" }} />)
+                      ? (displayContent || <span className="ai-spinner" />)
                       : displayContent}
                     {showActions && (
                       <div className="chat-message__actions">

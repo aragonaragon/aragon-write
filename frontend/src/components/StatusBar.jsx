@@ -50,7 +50,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       <div className="statusbar__spacer" />
 
       <div className="statusbar__item statusbar__provider">
-        {external && <Cloud size={11} style={{ color: "var(--text-muted)" }} />}
+        {external && <Cloud size={11} className="statusbar__cloud" />}
         <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
         <span>{statusLabel}</span>
         {/* Start/kill Ollama controls only make sense in local mode */}

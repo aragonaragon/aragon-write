@@ -119,7 +119,7 @@ export default function DocSwitcher({
         title="تبديل / إعادة تسمية"
       >
         <FileText size={14} />
-        <span className="doc-switcher__title">{currentDoc?.title || "..."}</span>
+        <span className="doc-switcher__title">{currentDoc?.title || (projectMode ? "بدون فصل" : "بدون مستند")}</span>
         <ChevronDown size={12} className={`doc-switcher__caret${isOpen ? " is-open" : ""}`} />
       </button>
 
