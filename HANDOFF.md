@@ -1,6 +1,6 @@
 # 🤝 HANDOFF — Aragon Write
 
-> ملاحظات تسليم بين الجلسات. آخر تحديث: 2026-05-13.
+> ملاحظات تسليم بين الجلسات. آخر تحديث: 2026-09-03.
 
 ---
 
@@ -24,216 +24,98 @@
 
 ---
 
-## 🎯 ما تم في الجلسة السابقة
-
-### Save As + Import متعدد الصيغ — جاهز
-
-التطبيق صار يحفظ ويستورد بصيغ متعددة عبر حوارات نظام طبيعية.
-
-**Save As:**
-- `.docx` (Word) — `docx` library يبني Paragraph/TextRun من HTML
-- `.pdf` — Electron's `printToPDF()` على نافذة مخفية تحوي HTML المنسّق RTL
-- `.md` / `.html` / `.txt` — تحويل محلي محسّن (مع inline formatting)
-
-**Import:**
-- `.docx` — `mammoth.convertToHtml()` يرجع HTML نظيف
-- `.pdf` — `pdfjs-dist/legacy/build/pdf.mjs` يستخرج النص صفحة-صفحة (مع تحذير جودة)
-- `.md` / `.txt` / `.html` — محلي
-- **JSON backup** — استرداد مشروع كامل في مشروع جديد
-
-**حوار خيارات Import** — يسأل: فصل جديد / مشروع جديد / إلحاق بالحالي.
-
-**Dependencies جديدة (في `backend/package.json` فقط، exact versions):**
-- `docx` 9.6.1 — كتابة .docx
-- `mammoth` 1.12.0 — قراءة .docx
-- `pdfjs-dist` 5.7.284 — قراءة .pdf
-- `npm audit`: 0 ثغرات
-
-**البنية:**
-- `electron/preload.cjs` (جديد) — يكشف electronAPI عبر contextBridge
-- `electron/main.cjs` — IPC handlers: `dialog:save-as`, `dialog:open-import`, `pdf:export`
-- `backend/src/server.js` — 8 endpoints جديدة (`/convert/to-docx`, `/convert/from-docx`, `/convert/from-pdf`, `/convert/from-md`, `/convert/wrap-html`, `/export/write-file`, `/import/read-file`, `/backup/export-project`, `/backup/import-project`)
-- `frontend/src/lib/fileIO.js` (جديد) — غلاف للـ electronAPI + fetch
-- `frontend/src/components/FileMenu.jsx` (جديد) — قائمة "ملف ▾" في الـ topbar
-- `frontend/src/components/ImportDialog.jsx` (جديد) — حوار اختيار وجهة الاستيراد
-
-**ملاحظة على `.npmrc`:**
-- `min-release-age=7d` (مو `7 days` — npm 11.11 ما يفهم الـ space format صح، يصير `before=null` وكل npm install يفشل بـ "Invalid time value")
-- تم تصحيح الـ 4 ملفات (`~/.npmrc` + root + backend + frontend)
-
----
-
-### دعم API خارجي (Groq / OpenRouter / DeepSeek) — للأجهزة الضعيفة
-
-التطبيق صار يدعم OpenAI-compatible APIs كبديل عن Ollama المحلي.
-
-**كيف يشتغل:**
-- في **Settings → مصدر الذكاء الاصطناعي** المستخدم يختار بين "محلي (Ollama)" و"API خارجي"
-- 3 إعدادات مسبقة بضغطة زر: Groq / OpenRouter / DeepSeek (تعبّي Base URL و model تلقائياً)
-- API Key يحفظ في localStorage (غير مشفّر — مقبول لتطبيق محلي، تنبيه ظاهر للمستخدم)
-- زر "اختبار الاتصال" يضرب `/models` ويرجع نتيجة فورية
-- زر "جلب قائمة الموديلات" يعبّي dropdown بالموديلات المتاحة من الـ API
-
-**ملفات مفتاحية:**
-- `backend/src/server.js`:
-  - `openaiCompatGenerate()` — POST `/chat/completions` بصيغة OpenAI
-  - `aiGenerate()` — dispatcher يختار بين Ollama و OpenAI
-  - `/health/provider` (POST) — اختبار اتصال
-  - `/models/external` (POST) — جلب الموديلات
-  - الـ streaming parser يحوّل صيغة OpenAI SSE (`data: {choices:[{delta:{content}}]}`) إلى الصيغة الموحّدة `data: {text}` للفرونت
-- `frontend/src/lib/provider.js` — helpers (`getProviderName`, `isExternal`, `getActiveModel`)
-- `frontend/src/components/Settings.jsx` — قسم Provider الكامل + `PROVIDER_PRESETS`
-- `frontend/src/components/AIPanel.jsx` — `resolveProvider()` يمرّر providerConfig مع كل طلب
-- StatusBar + Home — يبيّنون اسم المزود الحالي ("Groq متصل" بدل "Ollama متصل")
-
-**السلوك المحمي:**
-- التدقيق الإملائي يتعطّل تلقائياً في وضع API (تكلفة عالية لو كل كلمة تروح للسحابة)
-- `/check-word*` ترجع 503 لو `providerConfig.type === "openai_compat"` (safety net)
-- اللي يجي بـ Ollama (الافتراضي) ما يتأثر — كل التعديلات opt-in
-
----
-
-### Commit `a60a61b` (مدفوع لـ GitHub)
-
-**1. تبديل الموديل الافتراضي:** `qwen2.5:7b` → `gemma4:e4b`
-- السبب: Qwen صيني، أحياناً يطلّع نص صيني بدل عربي
-- gemma4:e4b أخف (~4B effective) ومناسب لأجهزة متوسطة-قوية
-- ملفات: `backend/src/server.js:14`, `frontend/src/App.jsx:37`, `Settings.jsx`, `Welcome.jsx`, `README.md`
-
-**2. تعميم تبويب المحادثة:**
-- قبل: مساعد كتابي إجباري + المستند سياق إلزامي
-- بعد: مساعد عام، يجاوب عن أي سؤال، المستند سياق اختياري إذا السؤال متعلق فيه
-- ملف: `backend/src/server.js:99` (دالة `chat` في `ACTION_PROMPTS`)
-- ملف: `frontend/src/components/AIPanel.jsx` (نص الترحيب + لا يتطلب editor)
-
-**3. أزرار "أضف للمستند" + "نسخ" في كل رد محادثة:**
-- تظهر تحت كل رد من المساعد (بعد ما يخلص)
-- "أضف للمستند" يلصق في نهاية المستند الحالي
-- ملفات: `AIPanel.jsx`، CSS في `styles.css` (`.chat-message__actions`)
-
----
-
-## 📂 خريطة المجلدات (مهم — في فوضى ممكن تخربط)
+## 📂 خريطة المجلدات (الحالية)
 
 | المسار | المحتوى |
 |---|---|
-| `C:\Users\aragon\Documents\AragonWrite\` | 🟢 **المصدر** — git-linked بـ GitHub. شغل هنا فقط. |
-| `C:\Users\aragon\Documents\Aragon Write\` | 🟢 **بيانات المستخدم** — مستنداته المحفوظة. لا تلمسها. |
-| `C:\Users\aragon\Documents\aragon aragon write\` | ⚠️ **مجلد فارغ غلطة** — يُنصح حذفه. لا تشتغل فيه. |
-| `C:\Users\aragon\Documents\AragonWrite\app-release\` | 📦 آخر build (13 مايو، معه التعديلات الجديدة) ~345 MB |
-| `C:\Users\aragon\Desktop\AragonWrite-2026-05-11.rar` | 🗄️ نسخة احتياطية مضغوطة (0.6 MB، بدون node_modules) |
-| `C:\Users\aragon\Desktop\Aragon Write.lnk` | 🔗 Shortcut يفتح النسخة المبنية |
+| `D:\past pro\repos\aragon-write\` | 🟢 **المصدر** — git-linked بـ GitHub. اشتغل هنا فقط. |
+| `C:\Users\arago\Documents\Aragon Write\` | 🟢 **بيانات المستخدم** — مشاريعه ومستنداته. لا تلمسها. |
+| `C:\Users\arago\AppData\Local\Programs\Aragon Write\` | 📦 **النسخة المثبتة** اللي يفتحها اختصار سطح المكتب. نفس مخرجات electron-packager (بدون asar). |
+| `D:\past pro\repos\aragon-write\app-release\` | 📦 آخر بناء Windows (`npm run dist:win`) — ~356 MB |
+| `D:\past pro\repos\backups\` | 🗄️ نسخ احتياطية (zip قبل إعادة التصميم + resources النسخة المثبتة القديمة) |
+
+**تحديث النسخة المثبتة يدوياً** (لو ما تبي تعيد التثبيت): أغلق التطبيق، ثم انسخ محتويات `app-release\Aragon Write-win32-x64\` فوق مجلد النسخة المثبتة.
+
+---
+
+## 🎨 التصميم الحالي — «غرفة كتابة ليلية» (سبتمبر 2026)
+
+إعادة تصميم كاملة، الفرع `experiment/visual-changes` مدموج في `main`.
+
+- **ملف واحد للأنماط:** `frontend/src/app.css` (حُذف `styles.css` و `redesign.css`). لا أنماط inline في المكوّنات — أي عنصر جديد يستخدم الـ tokens: `--gold`, `--surface`, `--line`, `--text-2`, `--r-*`, `--ease`.
+- **ثلاث سمات:** `dark` (ليل — الافتراضي)، `light` (نهار)، `sepia` (ورق). تُطبّق عبر `data-theme` على `<html>`.
+- **الخطوط مضمّنة بدون إنترنت:** IBM Plex Sans Arabic (واجهة) + Amiri (محرر/عناوين) في `frontend/src/assets/fonts/` عبر `@font-face` نسبي — يشتغل تحت `file://` في Electron.
+- **الأشرطة عائمة زجاجية** (topbar / toolbar / statusbar) والورقة بإطار مزدوج وتملأ العرض. ترتيب الطبقات صريح: topbar (30) > toolbar (20) > editor-layout (1) لأن `backdrop-filter` ينشئ stacking context.
+- **الاستجابة:** ≤1100 (آيباد أفقي)، ≤860 (آيباد عمودي: يختفي جدول المحتويات والمساعد يصير لوحة عائمة)، ≤600 (هاتف: نوافذ من الأسفل، شريط علوي مضغوط، بدون زجاج). مع `env(safe-area-inset-*)`.
+- **حركات الدخول** بـ `animation-fill-mode: backwards` (القاعدة الأخيرة في الملف) حتى لا يبقى `filter/transform` بعد الحركة.
 
 ---
 
 ## 🖥️ Stack المشروع
 
-- **Electron 41** + **React 18** + **JavaScript (.jsx)** (مو TypeScript)
-- **npm workspaces**: `frontend` + `backend` (مو pnpm)
-- **TipTap 2** للمحرر
-- **Vite 5** للـ frontend dev server
-- **Express 4** للـ backend
-- **Ollama** (local LLM) — الموديل الافتراضي `gemma4:e4b`
+- **Electron 41** + **React 18** + **JavaScript (.jsx)**
+- **npm workspaces**: `frontend` + `backend`
+- **TipTap 2** للمحرر · **Vite 5** · **Express 4**
+- **Ollama** (local LLM) — الموديل الافتراضي `gemma4:e4b` · أو API خارجي متوافق مع OpenAI
+- Vite يقسّم الحزم: `react` / `editor` (tiptap+prosemirror) / `icons` / `index`
 
 ---
 
 ## ⚙️ أوامر سريعة
 
 ```bash
-# تطوير (Electron + hot-reload)
-npm run electron:dev
-
-# بناء portable .exe (~3-5 دقائق)
-npm run dist
-
-# تشغيل النسخة المبنية
-# دبل كليك على Desktop\Aragon Write.lnk
+npm run electron:dev   # تطوير (Electron + hot-reload). main.cjs لا يشغّل backend ثانٍ في dev.
+npm run dist:win       # بناء Windows → app-release/Aragon Write-win32-x64/
+npm run dist:mac       # بناء macOS (يُنفّذ على ماك) → app-release/Aragon Write-darwin-{arm64,x64}/
+cd frontend && node --test tests/   # اختبارات الحفظ التلقائي
 ```
+
+### ملاحظات البناء (مهم)
+- **Node 24 + electron-packager:** فك ضغط Electron كان يتوقف بصمت (extract-zip + yauzl 2). الحل موجود في `package.json` → `"overrides": { "yauzl": "^3.2.0" }`. لا تحذفه.
+- **الماك:** لازم يُبنى على جهاز ماك (البناء من ويندوز يكسر الروابط الرمزية داخل `.app`). أيقونة الماك `electron/icon.icns` مولّدة من `logo.png`. `main.cjs` يبني قائمة تطبيق (roles) على darwin حتى تشتغل Cmd+C/V/Z. `backend` يشغّل Ollama على الماك عبر `open -a Ollama` ثم مسارات Homebrew/usr-local.
+- النسخ غير موقّعة (Windows SmartScreen / macOS Gatekeeper يحذّران أول مرة).
 
 ---
 
 ## 🔧 GitHub
 
 - **Repo**: https://github.com/aragonaragon/aragon-write
-- **Branch**: `main`
-- **Last commit**: `a60a61b` (مدفوع)
-- **المالك / للتواصل**: `aragonaragon` ([nathoool92@gmail.com](mailto:nathoool92@gmail.com))
+- **Branch**: `main` (يحتوي إعادة التصميم كاملة) · فرع العمل السابق `experiment/visual-changes`
+- **المالك**: `aragonaragon` ([nathoool92@gmail.com](mailto:nathoool92@gmail.com))
 
 ---
 
-## 🐛 مشاكل معروفة (Pre-existing، ما تم إصلاحها)
+## 🧭 سلوكيات مهمة في الكود
 
-### 1. Dev script يصرف backend مرتين
-**الموقع**: `electron/main.cjs:48` (دالة `startBackend`) + `package.json:17` (script `electron:dev`)
-
-**المشكلة**: `npm run electron:dev` يطلق backend بـ concurrently، و Electron's main.cjs بعد يطلق backend خاص في `startBackend()`. النتيجة:
-- خطأ `EADDRINUSE: address already in use :::3001` على الـ [0] (concurrently's backend)
-- التطبيق يشتغل عادي (Electron's backend هو اللي يخدم) لكن بدون hot-reload للـ backend
-
-**الحل المقترح**: في `electron/main.cjs`، تخطّى `startBackend()` لو `isDev === true` (لأن concurrently يطلقه أصلاً).
-
-```js
-// في main.cjs، حول السطر اللي يستدعي startBackend()
-if (!isDev) {
-  startBackend();
-}
-```
-
-### 2. مجلدات orphan على المنافذ
-أحياناً تتراكم عمليات Node قديمة على ports 3001 / 5173 من جلسات سابقة. الحل:
-```powershell
-Get-Process -Name electron, node | Where-Object { $_.Id -ne $PID } | Stop-Process -Force
-```
-
----
-
-## 🤖 موديلات Ollama المتوفرة محلياً
-
-| الموديل | الحجم | للعربي | ملاحظة |
-|---|---|---|---|
-| **gemma4:e4b** ⭐ | ~4B | ممتاز | الافتراضي الحالي، خفيف |
-| gemma4:26b | 26B | ممتاز | لأجهزة قوية |
-| gemma2:9b | 9B | جيد | متوازن |
-| jais-family-13b | 13B | متخصص عربي | بطيء نسبياً |
-| qwen2.5 (7b/14b/32b) | متعددة | ضعيف عربي | يطلّع صيني أحياناً — تجنّبه |
-| llama3.1/3.2 | متعددة | متوسط | |
-| mistral-small3.1 | 24B | جيد | |
-
----
-
-## 📝 ملفات مفتاحية للتعديل
-
-| الموضوع | الملف:السطر |
+| الموضوع | الملف |
 |---|---|
-| الموديل الافتراضي (backend) | `backend/src/server.js:14` |
-| الموديل الافتراضي (frontend) | `frontend/src/App.jsx:37` |
-| برومبتات الإجراءات (rewrite/improve/etc) | `backend/src/server.js:84-100` |
-| برومبت المحادثة | `backend/src/server.js:99-107` |
-| إجراءات المحادثة السريعة (UI) | `frontend/src/components/AIPanel.jsx:9-21` |
-| تنسيقات المحادثة | `frontend/src/styles.css:775-820` |
-| Electron main + backend spawn | `electron/main.cjs:48-87` |
-| Storage path للمستخدم | `backend/src/server.js:21-23` |
+| مشروع بدون فصول → ينشئ فصلاً تلقائياً (وإلا يضيع النص) | `frontend/src/App.jsx` (effect بعد `createDocument`) |
+| الحفظ: مسودة فورية في localStorage + كتابة على القرص بعد 0.7 ث | `frontend/src/lib/autosave.js`, `App.jsx` |
+| السمة الافتراضية للمستخدم الجديد | `App.jsx` → `DEFAULT_SETTINGS.theme = "dark"` |
+| برومبتات الإجراءات / المحادثة | `backend/src/server.js` (`ACTION_PROMPTS`) |
+| تشغيل/إيقاف Ollama حسب النظام | `backend/src/server.js` (`/ollama/start`, `/ollama/kill`) |
+| Electron main + backend (utilityProcess) | `electron/main.cjs` |
+| مسار تخزين المستخدم | `backend/src/server.js:20-25` (`STORAGE_ROOT`) |
+
+---
+
+## 🐛 معروف / متبقٍ
+
+1. **اختبارات الواجهة** غير موجودة (فقط اختبار autosave). التحقق البصري يُعمل يدوياً.
+2. **الجوال/الآيباد** التصميم جاهز لكن التطبيق Electron؛ للاستخدام من متصفح الجوال يلزم فتح الباك إند على الشبكة المحلية وجعل `VITE_API_URL` قابلاً للضبط.
+3. عمليات Node قديمة أحياناً تحتل المنافذ 3001 / 5173:
+   ```powershell
+   Get-Process -Name electron, node | Where-Object { $_.Id -ne $PID } | Stop-Process -Force
+   ```
 
 ---
 
 ## 🎨 تفضيلات المستخدم الملاحَظة
 
-- يحب الحلول **البسيطة** ("ابي شي سهل")
-- يفضّل **العربية** (الخليجية) في الردود
+- يبي حلولاً **كاملة** لا ترقيعات، ويختار "استعمل مهاراتك" بدل الخيارات
+- يفضّل **العربية** (الخليجية) في الردود، وردوداً موجزة
 - يقلق من فوضى الملفات ونسخ AI القديمة
-- جهازه **متوسط-قوي** (يقدر يشغّل موديلات حتى 26B)
-- بعض الأحيان يكتب بسرعة وفيه أخطاء طباعة — تأكد قبل الإجراءات المدمّرة
-
----
-
-## 🚀 خطوات سريعة لإكمال الشغل في الجلسة الجاية
-
-1. **اقرأ هذا الملف كاملاً** قبل أي عمل
-2. **لا تضف dependencies** بدون إذن صريح
-3. تحقق من حالة git: `git status` و `git log -3 --oneline`
-4. إذا التطبيق ما يشتغل، شيّك المنافذ: `netstat -ano | findstr ":3001 :5173"`
-5. أي تعديل = مرّ المراجعة → commit → ادفع إذا المستخدم وافق
-
----
+- جهازه متوسط-قوي (موديلات حتى 26B)
+- يستعمل التطبيق على **ويندوز وماك**
 
 *— نهاية HANDOFF —*

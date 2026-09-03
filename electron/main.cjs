@@ -6,7 +6,7 @@
  * Dist: npm run dist
  */
 
-const { app, BrowserWindow, shell, utilityProcess, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, shell, utilityProcess, ipcMain, dialog, Menu } = require("electron");
 const path = require("path");
 const http = require("http");
 const fs = require("fs/promises");
@@ -112,9 +112,9 @@ async function createWindow() {
     height: 920,
     minWidth: 1000,
     minHeight: 660,
-    backgroundColor: "#fdf8f0",
+    backgroundColor: "#101013",
     title: "Aragon Write",
-    icon: path.join(__dirname, "icon.ico"),
+    icon: process.platform === "darwin" ? undefined : path.join(__dirname, "icon.ico"),
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -123,7 +123,20 @@ async function createWindow() {
     },
   });
 
-  mainWindow.setMenuBarVisibility(false);
+  if (process.platform === "darwin") {
+    // macOS routes Cmd+C / Cmd+V / Cmd+Z through the application menu, so a
+    // minimal role-based menu must exist even though we hide it on Windows.
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        { role: "appMenu" },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+      ])
+    );
+  } else {
+    mainWindow.setMenuBarVisibility(false);
+  }
 
   if (isDev) {
     await mainWindow

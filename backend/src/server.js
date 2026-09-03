@@ -485,10 +485,14 @@ app.post("/ollama/kill", async (_req, res) => {
 // POST /ollama/start — launch Ollama serve (Windows / mac / linux)
 app.post("/ollama/start", async (_req, res) => {
   try {
+    // GUI apps on macOS get a minimal PATH, so try the Ollama.app bundle first,
+    // then the usual CLI install locations.
     const cmd =
       process.platform === "win32"
         ? "start /B ollama serve"
-        : "ollama serve &";
+        : process.platform === "darwin"
+        ? "(open -a Ollama || nohup /opt/homebrew/bin/ollama serve >/dev/null 2>&1 || nohup /usr/local/bin/ollama serve >/dev/null 2>&1) &"
+        : "nohup ollama serve >/dev/null 2>&1 &";
     exec(cmd); // fire-and-forget
     res.json({ ok: true });
   } catch (err) {

@@ -88,14 +88,17 @@ ollama pull gemma4:e4b
 <details>
 <summary>تشغيل للتطوير</summary>
 
-**المتطلبات:** Node.js 20+
+**المتطلبات:** Node.js 20+ (مجرّب على 24)
 
 ```bash
 npm install
 npm run dev          # browser على localhost:5173
 npm run electron:dev # Electron window
-npm run dist         # بناء portable .exe
+npm run dist:win     # Windows: app-release/Aragon Write-win32-x64/
+npm run dist:mac     # macOS (شغّله على ماك): app-release/Aragon Write-darwin-arm64/ و -x64/
 ```
+
+**بناء نسخة الماك:** انسخ المشروع على الماك، ثم `npm install && npm run dist:mac`. يطلع لك `Aragon Write.app` لأجهزة Apple Silicon و Intel. النسخة غير موقّعة، فأول تشغيل: كليك يمين على التطبيق → فتح.
 
 **Stack:**
 ```
