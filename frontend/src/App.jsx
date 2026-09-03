@@ -1196,7 +1196,7 @@ export default function App() {
       <Toolbar editor={editor} />
 
       <div className="editor-layout">
-        <OutlineSidebar editor={editor} isOpen={isOutlineOpen} />
+        <OutlineSidebar editor={editor} isOpen={isOutlineOpen} onToggle={() => setIsOutlineOpen((v) => !v)} />
 
         <main className="editor-stage" ref={editorStageRef}>
           <div className="paper" ref={paperRef} style={{ "--editor-zoom": settings.zoom / 100 }}>

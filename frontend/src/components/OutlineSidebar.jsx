@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlignJustify } from "lucide-react";
+import { PanelRightClose } from "lucide-react";
 
 function extractHeadings(editor) {
   if (!editor) return [];
@@ -17,7 +17,7 @@ function extractHeadings(editor) {
   return headings;
 }
 
-export default function OutlineSidebar({ editor, isOpen }) {
+export default function OutlineSidebar({ editor, isOpen, onToggle }) {
   const [headings, setHeadings] = useState([]);
 
   useEffect(() => {
@@ -43,7 +43,9 @@ export default function OutlineSidebar({ editor, isOpen }) {
     <aside className={`outline-sidebar${isOpen ? "" : " collapsed"}`}>
       <div className="outline-header">
         <span>جدول المحتويات</span>
-        <AlignJustify size={13} />
+        <button className="btn-icon outline-header__btn" onClick={onToggle} title="إخفاء جدول المحتويات" aria-label="إخفاء جدول المحتويات">
+          <PanelRightClose size={15} />
+        </button>
       </div>
 
       {headings.length === 0 ? (
