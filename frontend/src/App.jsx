@@ -269,7 +269,11 @@ export default function App() {
     async function check() {
       try {
         const res = await fetch(`${API_URL}/health`);
-        if (!cancelled) setOllamaStatus(res.ok ? "online" : "error");
+        if (!res.ok) throw new Error("backend down");
+        const data = await res.json().catch(() => ({}));
+        // External API mode does not need Ollama at all.
+        const external = settingsRef.current.provider === "openai_compat";
+        if (!cancelled) setOllamaStatus(external || data.ollamaOk !== false ? "online" : "error");
       } catch { if (!cancelled) setOllamaStatus("error"); }
     }
     check();

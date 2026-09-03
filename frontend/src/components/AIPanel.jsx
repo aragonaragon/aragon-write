@@ -45,6 +45,18 @@ const QUICK_ACTIONS = [
   { id: "youtube_script", label: "سكربت يوتيوب", icon: Video, requiresSelection: false },
 ];
 
+// Turn low-level network errors into something a writer can act on.
+function friendlyError(message) {
+  const m = String(message || "");
+  if (/fetch failed|ECONNREFUSED|Failed to fetch|NetworkError/i.test(m)) {
+    return "تعذّر الوصول إلى المساعد. تأكد أن Ollama يعمل (أو أن إعدادات API صحيحة) ثم أعد المحاولة.";
+  }
+  if (/model .* not found|no such model/i.test(m)) {
+    return "الموديل غير موجود. حمّله من الإعدادات أو اختر موديلاً آخر.";
+  }
+  return m || "حدث خطأ";
+}
+
 function useStream(apiUrl) {
   const [text, setText] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -97,7 +109,7 @@ function useStream(apiUrl) {
       }
     } catch (err) {
       if (err.name !== "AbortError") {
-        setError(err.message || "حدث خطأ");
+        setError(friendlyError(err.message));
       }
     } finally {
       setStreaming(false);

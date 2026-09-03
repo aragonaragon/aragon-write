@@ -21,12 +21,8 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
 
   useEffect(() => {
     const seen = localStorage.getItem("aragon-write-onboarded") === "1";
-    if (!seen) {
-      setOpen(true);
-      return;
-    }
-    if (ollamaStatus === "error" && !usingExternalApi) setOpen(true);
-  }, [ollamaStatus, usingExternalApi]);
+    if (!seen) setOpen(true);
+  }, []);
 
   if (!open) return null;
 

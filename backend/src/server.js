@@ -234,7 +234,14 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
 // ─── AI / Ollama Routes ───────────────────────────────────────────────────────
-app.get("/health", (_req, res) => res.json({ ok: true, ollama: OLLAMA_BASE, model: DEFAULT_MODEL }));
+app.get("/health", async (_req, res) => {
+  let ollamaOk = false;
+  try {
+    const r = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(1500) });
+    ollamaOk = r.ok;
+  } catch {}
+  res.json({ ok: true, ollamaOk, ollama: OLLAMA_BASE, model: DEFAULT_MODEL });
+});
 
 app.get("/models", async (_req, res) => {
   try {
