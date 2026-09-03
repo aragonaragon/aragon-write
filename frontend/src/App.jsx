@@ -1063,17 +1063,20 @@ export default function App() {
     }
   }, [pendingImport, editor, projectMode, currentProjectId, openProject, loadProjects, showToast]);
 
-  // Ensure at least one document exists (no-project mode, but only after leaving Home)
+  // The editor must always have a document to write into, otherwise typed
+  // text has nowhere to be saved. Runs for both quick-write (localStorage)
+  // and project mode, and re-checks whenever the document list settles —
+  // an [isHome]-only effect saw a stale (previous project's) list.
   useEffect(() => {
-    if (!isHome && !projectMode && documents.length === 0) createDocument();
-  }, [isHome]); // eslint-disable-line
-
-  // Projects must always have a chapter to write into, otherwise typed text
-  // has nowhere to be saved. Create one as soon as an empty project loads.
-  useEffect(() => {
-    if (isHome || !projectMode || loadedProjectId !== currentProjectId) return;
-    if (documents.length > 0 || autoCreatedForRef.current === currentProjectId) return;
-    autoCreatedForRef.current = currentProjectId;
+    if (isHome) return;
+    if (projectMode && loadedProjectId !== currentProjectId) return; // docs still loading
+    const key = projectMode ? currentProjectId : "local";
+    if (documents.length > 0) {
+      autoCreatedForRef.current = null;
+      return;
+    }
+    if (autoCreatedForRef.current === key) return;
+    autoCreatedForRef.current = key;
     createDocument();
   }, [isHome, projectMode, loadedProjectId, currentProjectId, documents.length, createDocument]);
 
