@@ -209,6 +209,16 @@ function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || "").trim().replace(/\/+$/, "");
 }
 
+// DeepSeek V4 models run in "thinking" mode by default: they stream long
+// reasoning_content before any answer text, which looks frozen in a writing
+// tool and can exhaust max_tokens before the answer starts. Writing actions
+// do not need chain-of-thought, so turn it off where the API supports it.
+function providerExtras(baseUrl) {
+  const host = normalizeBaseUrl(baseUrl).toLowerCase();
+  if (host.includes("api.deepseek.com")) return { thinking: { type: "disabled" } };
+  return {};
+}
+
 async function openaiCompatGenerate({ prompt, model, stream, baseUrl, apiKey }) {
   const url = `${normalizeBaseUrl(baseUrl)}/chat/completions`;
   const response = await fetch(url, {
@@ -222,7 +232,8 @@ async function openaiCompatGenerate({ prompt, model, stream, baseUrl, apiKey }) 
       messages: [{ role: "user", content: prompt }],
       stream: !!stream,
       temperature: 0.7,
-      max_tokens: 4096,
+      max_tokens: 8192,
+      ...providerExtras(baseUrl),
     }),
   });
   if (!response.ok) {
@@ -401,6 +412,9 @@ app.post("/ai/stream", async (req, res) => {
     const reader = upstream.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let wroteText = false;
+    let sawReasoning = false;
+    let lastThinkingPing = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -417,8 +431,25 @@ app.post("/ai/stream", async (req, res) => {
           if (payload === "[DONE]") { res.write("data: [DONE]\n\n"); continue; }
           try {
             const parsed = JSON.parse(payload);
-            const chunk = parsed.choices?.[0]?.delta?.content;
-            if (chunk) res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+            if (parsed.error) {
+              res.write(`data: ${JSON.stringify({ error: parsed.error.message || String(parsed.error) })}\n\n`);
+              continue;
+            }
+            const delta = parsed.choices?.[0]?.delta || {};
+            const chunk = delta.content;
+            if (chunk) {
+              wroteText = true;
+              res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+            } else if (delta.reasoning_content || delta.reasoning) {
+              // Reasoning models think first. Tell the UI the model is alive
+              // (throttled) instead of leaving it on a silent spinner.
+              sawReasoning = true;
+              const now = Date.now();
+              if (now - lastThinkingPing > 1500) {
+                lastThinkingPing = now;
+                res.write(`data: ${JSON.stringify({ thinking: true })}\n\n`);
+              }
+            }
           } catch {}
         } else {
           // Ollama: one JSON object per line — {"response":"...", "done":bool}
@@ -429,6 +460,9 @@ app.post("/ai/stream", async (req, res) => {
           } catch {}
         }
       }
+    }
+    if (external && sawReasoning && !wroteText) {
+      res.write(`data: ${JSON.stringify({ error: "الموديل استهلك الرد كله في التفكير ولم يكتب نصاً. جرّب موديلاً بدون وضع تفكير أو أعد المحاولة." })}\n\n`);
     }
   } catch (error) {
     res.write(`data: ${JSON.stringify({ error: error.message || "فشل الاتصال" })}\n\n`);

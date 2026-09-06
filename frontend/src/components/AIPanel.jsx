@@ -62,6 +62,7 @@ function friendlyError(message) {
 function useStream(apiUrl) {
   const [text, setText] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [thinking, setThinking] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
 
@@ -71,6 +72,7 @@ function useStream(apiUrl) {
     abortRef.current = controller;
     setText("");
     setError(null);
+    setThinking(false);
     setStreaming(true);
 
     try {
@@ -106,7 +108,8 @@ function useStream(apiUrl) {
           try {
             const data = JSON.parse(raw);
             if (data.error) throw new Error(data.error);
-            if (data.text) setText((prev) => prev + data.text);
+            if (data.thinking) setThinking(true);
+            if (data.text) { setThinking(false); setText((prev) => prev + data.text); }
           } catch (parseErr) {
             if (parseErr.message !== "Unexpected token D in JSON") {
               throw parseErr;
@@ -120,6 +123,7 @@ function useStream(apiUrl) {
       }
     } finally {
       setStreaming(false);
+      setThinking(false);
     }
   }, [apiUrl]);
 
@@ -133,7 +137,7 @@ function useStream(apiUrl) {
     setError(null);
   }, []);
 
-  return { text, streaming, error, run, stop, clear };
+  return { text, streaming, thinking, error, run, stop, clear };
 }
 
 export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
@@ -146,7 +150,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
   const [addedChatIdx, setAddedChatIdx] = useState(null);
   const chatEndRef = useRef(null);
 
-  const { text: result, streaming, error, run, stop, clear } = useStream(apiUrl);
+  const { text: result, streaming, thinking, error, run, stop, clear } = useStream(apiUrl);
 
   const getSelectionOrDoc = () => {
     if (!editor) return { selected: "", full: "" };
@@ -357,6 +361,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
               <div>
                 <div className="ai-section-label">
                   النتيجة {streaming && <span className="ai-spinner" />}
+                  {streaming && thinking && !result && <span className="ai-thinking">الموديل يفكّر…</span>}
                 </div>
 
                 {error && (
@@ -421,7 +426,7 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
                 return (
                   <div key={i} className={`chat-message ${msg.role}${isStreaming ? " streaming" : ""}`}>
                     {isStreaming
-                      ? (displayContent || <span className="ai-spinner" />)
+                      ? (displayContent || (thinking ? <span className="ai-thinking">يفكّر…</span> : <span className="ai-spinner" />))
                       : displayContent}
                     {showActions && (
                       <div className="chat-message__actions">

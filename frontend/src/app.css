@@ -2713,3 +2713,11 @@ body { -webkit-tap-highlight-color: transparent; }
   .btn-dictation__label { display: none; }
   .dictation-indicator > span:last-child:not(.dictation-indicator__dot) { display: none; }
 }
+
+.ai-thinking {
+  margin-inline-start: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  animation: pulse 1.4s ease-in-out infinite;
+}

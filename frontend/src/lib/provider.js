@@ -2,21 +2,22 @@
 // Shared between App, AIPanel, StatusBar, Home, and Settings so the label stays
 // consistent across the UI.
 
-const PRESET_LABELS = {
-  "https://api.groq.com/openai/v1": "Groq",
-  "https://openrouter.ai/api/v1": "OpenRouter",
-  "https://api.deepseek.com/v1": "DeepSeek",
-};
+const PRESET_LABELS = [
+  ["api.groq.com", "Groq"],
+  ["openrouter.ai", "OpenRouter"],
+  ["api.deepseek.com", "DeepSeek"],
+];
 
 function normalize(url) {
-  return String(url || "").trim().replace(/\/+$/, "");
+  return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
 }
 
 /** Returns "Ollama" | "Groq" | "OpenRouter" | "DeepSeek" | "API خارجي". */
 export function getProviderName(settings) {
   if (!settings || settings.provider !== "openai_compat") return "Ollama";
   const url = normalize(settings.apiBaseUrl);
-  return PRESET_LABELS[url] || "API خارجي";
+  const match = PRESET_LABELS.find(([host]) => url.includes(host));
+  return match ? match[1] : "API خارجي";
 }
 
 /** Returns the user-facing status line, e.g. "Groq متصل" or "Ollama متوقف". */
