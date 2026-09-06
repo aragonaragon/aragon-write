@@ -5,6 +5,8 @@ import {
   FileText, Type, Send, Copy, Check, PenLine,
   ChevronLeft, Video,
 } from "lucide-react";
+import { isNativeIOS } from "../lib/native";
+import { nativeGenerateAI } from "../lib/externalAI";
 
 // Strip leftover Markdown artifacts from model output (some models keep emitting
 // `**bold**`, `### headers`, and `---` dividers despite the system prompt)
@@ -72,6 +74,11 @@ function useStream(apiUrl) {
     setStreaming(true);
 
     try {
+      if (isNativeIOS) {
+        const output = await nativeGenerateAI(body);
+        setText(output);
+        return;
+      }
       const res = await fetch(`${apiUrl}/ai/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

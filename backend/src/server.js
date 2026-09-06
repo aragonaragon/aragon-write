@@ -51,9 +51,13 @@ function sanitizeDoc(body) {
 
 // Atomic write: write to temp then rename
 async function writeAtomic(filePath, data) {
-  const tmpPath = filePath + ".tmp";
-  await fsp.writeFile(tmpPath, data, "utf-8");
-  await fsp.rename(tmpPath, filePath);
+  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  try {
+    await fsp.writeFile(tmpPath, data, "utf-8");
+    await fsp.rename(tmpPath, filePath);
+  } finally {
+    await fsp.rm(tmpPath, { force: true }).catch(() => {});
+  }
 }
 
 // Find the on-disk folder for a project by its id
@@ -72,6 +76,32 @@ async function findProjectFolder(id) {
     } catch {}
   }
   return null;
+}
+
+const HISTORY_INTERVAL_MS = 10 * 60 * 1000;
+const HISTORY_LIMIT = 144;
+
+async function snapshotDocument(folder, docId) {
+  const sourcePath = path.join(folder, `${docId}.json`);
+  const historyDir = path.join(folder, ".history", docId);
+  try {
+    const source = await fsp.readFile(sourcePath, "utf8");
+    await ensureDir(historyDir);
+    const entries = (await fsp.readdir(historyDir)).filter((name) => name.endsWith(".json")).sort();
+    if (entries.length > 0) {
+      const newest = await fsp.stat(path.join(historyDir, entries.at(-1)));
+      if (Date.now() - newest.mtimeMs < HISTORY_INTERVAL_MS) return;
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await writeAtomic(path.join(historyDir, `${stamp}.json`), source);
+
+    const afterWrite = [...entries, `${stamp}.json`];
+    const excess = afterWrite.slice(0, Math.max(0, afterWrite.length - HISTORY_LIMIT));
+    await Promise.all(excess.map((name) => fsp.rm(path.join(historyDir, name), { force: true })));
+  } catch (error) {
+    if (error?.code !== "ENOENT") console.warn("Document snapshot failed:", error.message);
+  }
 }
 
 // ─── AI Action Prompts ────────────────────────────────────────────────────────
@@ -229,7 +259,24 @@ function isExternalProvider(providerConfig) {
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors());
+const ALLOWED_ORIGINS = new Set([
+  "null", // packaged Electron renderer loaded from file://
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+    return callback(new Error("Origin not allowed"));
+  },
+}));
+app.use((error, _req, res, next) => {
+  if (error?.message === "Origin not allowed") {
+    return res.status(403).json({ error: "Origin not allowed" });
+  }
+  return next(error);
+});
 // 50mb limit so backup imports and Save As bodies (HTML fragments) fit comfortably.
 app.use(express.json({ limit: "50mb" }));
 
@@ -1224,6 +1271,7 @@ app.put("/fs/projects/:id/docs/:docId", async (req, res) => {
     const body = sanitizeDoc(req.body);
     if (!body) return res.status(400).json({ error: "Invalid document body" });
     const doc = { ...body, updatedAt: new Date().toISOString() };
+    await snapshotDocument(folder, docId);
     await writeAtomic(path.join(folder, `${docId}.json`), JSON.stringify(doc, null, 2));
     // bump project updatedAt
     try {
@@ -1279,8 +1327,8 @@ async function ensureDefaultProject() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  console.log(`✓ Aragon Write backend running on http://localhost:${PORT}`);
+app.listen(PORT, "127.0.0.1", async () => {
+  console.log(`✓ Aragon Write backend running on http://127.0.0.1:${PORT}`);
   console.log(`  Ollama: ${OLLAMA_BASE} | Model: ${DEFAULT_MODEL}`);
   console.log(`  Storage: ${STORAGE_ROOT}`);
   await ensureDefaultProject();

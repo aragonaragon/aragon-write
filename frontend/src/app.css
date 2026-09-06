@@ -2643,3 +2643,73 @@ body { -webkit-tap-highlight-color: transparent; }
 /* Entry animations must not leave filter/transform behind (they would create stacking contexts). Must stay last. */
 .topbar, .toolbar, .statusbar, .paper, .ai-panel, .home__topbar, .home__hero, .home__section,
 .home__bento > *, .chat-message, .toast { animation-fill-mode: backwards; }
+
+/* ─── Arabic dictation (macOS / iPad) ──────────────────────────────────────── */
+.btn-dictation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface-raised);
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
+}
+.btn-dictation:hover { border-color: var(--primary); color: var(--primary); }
+.btn-dictation:active { transform: scale(0.97); }
+.btn-dictation--requesting,
+.btn-dictation--stopping { color: var(--text-3); }
+.btn-dictation--listening {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface-raised));
+}
+
+.dictation-indicator {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto 10px;
+  padding: 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-3);
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+}
+.dictation-indicator strong { color: inherit; font-weight: 650; filter: contrast(1.4); }
+.dictation-indicator__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.dictation-indicator__dot.is-live {
+  background: var(--danger);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 35%, transparent);
+  animation: dictationPulse 1.6s ease-out infinite;
+}
+@keyframes dictationPulse {
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (max-width: 600px) {
+  .btn-dictation { width: 40px; padding: 0; }
+  .btn-dictation__label { display: none; }
+  .dictation-indicator > span:last-child:not(.dictation-indicator__dot) { display: none; }
+}

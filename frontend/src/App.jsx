@@ -29,6 +29,14 @@ import {
   pickAndReadFile, mdToHtml, htmlToMd, htmlToText,
   readDocxAsHtml, readPdfAsHtml,
 } from "./lib/fileIO";
+import { createStorage } from "./lib/storage";
+import { isNativeIOS, NativeSecrets } from "./lib/native";
+import {
+  nativeSpeechAvailable,
+  onSpeechEvent,
+  startSpeechRecognition,
+  stopSpeechRecognition,
+} from "./lib/speech";
 import {
   clearProjectDraft,
   clearProjectDraftIfCurrent,
@@ -39,12 +47,17 @@ import {
 import {
   PenLine, FolderOpen, Settings as SettingsIcon, Sun, Moon, Sparkles,
   AlignJustify, ZoomIn, ZoomOut, Maximize2, Minimize2, Palette,
-  BookOpen, ChevronLeft,
+  BookOpen, ChevronLeft, Mic, Square,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:3001";
+const storage = createStorage(API_URL);
 const AUTOSAVE_DELAY = 700;
+// While typing continuously the debounce above keeps resetting, so also force a
+// disk write at least this often. The synchronous localStorage draft already
+// protects against crashes; this bounds how far the file on disk can lag.
+const AUTOSAVE_MAX_INTERVAL = 10000;
 const ARABIC_WORD_REGEX = /[\p{Script=Arabic}]+/gu;
 const SPELLCHECK_DEBOUNCE_MS = 800;
 
@@ -82,7 +95,13 @@ function loadSettings() {
     return { ...DEFAULT_SETTINGS, ...stored };
   } catch { return DEFAULT_SETTINGS; }
 }
-function saveSettings(s) { localStorage.setItem("aragon-write-settings", JSON.stringify(s)); }
+function saveSettings(s) {
+  const stored = { ...s };
+  if (window.electronAPI?.setSecret || isNativeIOS) {
+    delete stored.apiKey;
+  }
+  localStorage.setItem("aragon-write-settings", JSON.stringify(stored));
+}
 
 function normalizeWord(word) { return word.trim().replace(/\u0640/g, ""); }
 
@@ -147,6 +166,8 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [saveStatus, setSaveStatus] = useState("saved"); // "saved" | "saving" | "error"
   const [loadedProjectId, setLoadedProjectId] = useState(null); // project whose docs finished loading
+  const [dictation, setDictation] = useState({ state: "idle", onDevice: null });
+  const [storageStatus, setStorageStatus] = useState({ mode: isNativeIOS ? "checking" : "local", iCloud: false });
 
   const paperRef = useRef(null);
   const editorStageRef = useRef(null);
@@ -154,6 +175,7 @@ export default function App() {
   const pendingWordsRef = useRef(new Set());
   const debounceRef = useRef(null);
   const autosaveTimersRef = useRef(new Map());
+  const autosaveMaxTimersRef = useRef(new Map());
   const pendingProjectSavesRef = useRef(new Map());
   const projectSaveQueuesRef = useRef(new Map());
   const projectLoadRequestRef = useRef(0);
@@ -164,11 +186,56 @@ export default function App() {
   const currentDocIdRef = useRef(currentDocId);
   const documentsRef = useRef(documents);
   const autoCreatedForRef = useRef(null);
+  const dictationRef = useRef(dictation);
+  const dictationRangeRef = useRef(null);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { currentProjectIdRef.current = currentProjectId; }, [currentProjectId]);
   useEffect(() => { currentDocIdRef.current = currentDocId; }, [currentDocId]);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
+  useEffect(() => { dictationRef.current = dictation; }, [dictation]);
+
+  // On macOS, migrate any legacy plaintext API key into Electron's encrypted
+  // safe storage and hydrate it back into memory for the current session.
+  // Do not touch Keychain for the normal local-writing/Ollama path: unsigned
+  // development builds can otherwise trigger a macOS password prompt at launch.
+  useEffect(() => {
+    if (!window.electronAPI?.getSecret) return;
+    if (settings.provider !== "openai_compat") return;
+    let cancelled = false;
+    const legacyKey = settingsRef.current.apiKey || "";
+    const hasSecuredKey = localStorage.getItem("aragon-write-secret-stored") === "1";
+    (async () => {
+      if (legacyKey) {
+        await window.electronAPI.setSecret("external-api-key", legacyKey);
+        localStorage.setItem("aragon-write-secret-stored", "1");
+        saveSettings({ ...settingsRef.current, apiKey: legacyKey });
+      }
+      if (!legacyKey && !hasSecuredKey) return;
+      const securedKey = await window.electronAPI.getSecret("external-api-key");
+      if (!cancelled && securedKey) {
+        setSettings((current) => ({ ...current, apiKey: securedKey }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [settings.provider]);
+
+  // iPad has no local Ollama/backend. Keep the full assistant available through
+  // an OpenAI-compatible provider and keep its API key in the native Keychain.
+  useEffect(() => {
+    if (!isNativeIOS) return;
+    let cancelled = false;
+    (async () => {
+      const stored = await NativeSecrets.get({ key: "external-api-key" }).catch(() => ({ value: "" }));
+      if (cancelled) return;
+      setSettings((current) => {
+        const next = { ...current, provider: "openai_compat", apiKey: stored.value || current.apiKey || "" };
+        saveSettings(next);
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Serialize saves within each project. The backend updates a shared project
   // metadata file, so ordered writes also protect that atomic-write path.
@@ -178,13 +245,7 @@ export default function App() {
     const request = previous
       .catch(() => {})
       .then(async () => {
-        const res = await fetch(`${API_URL}/fs/projects/${projectId}/docs/${doc.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(doc),
-          keepalive: true,
-        });
-        if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        await storage.saveDocument(projectId, doc);
         const cleared = clearProjectDraftIfCurrent(projectId, doc);
         if (cleared && pendingProjectSavesRef.current.size === 0) setSaveStatus("saved");
         return true;
@@ -209,6 +270,9 @@ export default function App() {
     const timer = autosaveTimersRef.current.get(key);
     if (timer) clearTimeout(timer);
     autosaveTimersRef.current.delete(key);
+    const maxTimer = autosaveMaxTimersRef.current.get(key);
+    if (maxTimer) clearTimeout(maxTimer);
+    autosaveMaxTimersRef.current.delete(key);
     pendingProjectSavesRef.current.delete(key);
     return enqueueProjectSave(pending);
   }, [enqueueProjectSave]);
@@ -219,6 +283,9 @@ export default function App() {
     if (previousTimer) clearTimeout(previousTimer);
     pendingProjectSavesRef.current.set(key, { projectId, doc });
     autosaveTimersRef.current.set(key, setTimeout(() => flushProjectSave(key), delay));
+    if (!autosaveMaxTimersRef.current.has(key)) {
+      autosaveMaxTimersRef.current.set(key, setTimeout(() => flushProjectSave(key), AUTOSAVE_MAX_INTERVAL));
+    }
     setSaveStatus("saving");
   }, [flushProjectSave]);
 
@@ -232,6 +299,9 @@ export default function App() {
     const timer = autosaveTimersRef.current.get(key);
     if (timer) clearTimeout(timer);
     autosaveTimersRef.current.delete(key);
+    const maxTimer = autosaveMaxTimersRef.current.get(key);
+    if (maxTimer) clearTimeout(maxTimer);
+    autosaveMaxTimersRef.current.delete(key);
     pendingProjectSavesRef.current.delete(key);
     clearProjectDraft(projectId, docId);
     await (projectSaveQueuesRef.current.get(projectId) || Promise.resolve());
@@ -265,6 +335,10 @@ export default function App() {
 
   // Ollama status
   useEffect(() => {
+    if (isNativeIOS) {
+      setOllamaStatus("unavailable");
+      return undefined;
+    }
     let cancelled = false;
     async function check() {
       try {
@@ -284,18 +358,18 @@ export default function App() {
   // ── Load projects ──
   const loadProjects = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/fs/projects`);
-      if (res.ok) {
-        const list = await res.json();
-        setProjects(list);
-        return list;
-      }
+      const list = await storage.listProjects();
+      setProjects(list);
+      return list;
     } catch {}
     return [];
   }, []);
 
   useEffect(() => {
     loadProjects();
+    storage.status?.().then(setStorageStatus).catch(() => {
+      setStorageStatus({ mode: "local", iCloud: false });
+    });
     // No auto-select: the user chooses from the Home screen explicitly.
   }, []); // eslint-disable-line
 
@@ -303,37 +377,34 @@ export default function App() {
   const loadProjectDocs = useCallback(async (projectId) => {
     const requestId = ++projectLoadRequestRef.current;
     try {
-      const res = await fetch(`${API_URL}/fs/projects/${projectId}/docs`);
-      if (res.ok) {
-        const savedDocs = await res.json();
-        if (requestId !== projectLoadRequestRef.current || currentProjectIdRef.current !== projectId) {
-          return [];
-        }
-        const { documents: docs, recovered, stale } = mergeProjectDrafts(projectId, savedDocs);
-        stale.forEach((docId) => clearProjectDraft(projectId, docId));
-        documentsRef.current = docs;
-        setDocuments(docs);
-        setCurrentDocId(docs.length > 0 ? docs[0].id : null);
-        sessionStartWordsRef.current = null;
-        setSessionWords(0);
-        autoCreatedForRef.current = null;
-        setLoadedProjectId(projectId);
-        if (recovered.length > 0) {
-          setSaveStatus("saving");
-          setToasts((prev) => [...prev, {
-            id: genId(),
-            message: recovered.length === 1
-              ? "تم استعادة آخر كتابة غير محفوظة"
-              : `تم استعادة ${recovered.length} مسودات غير محفوظة`,
-            type: "success",
-            duration: 6000,
-          }]);
-          recovered.forEach((doc) => enqueueProjectSave({ projectId, doc }));
-        } else {
-          setSaveStatus("saved");
-        }
-        return docs;
+      const savedDocs = await storage.listDocuments(projectId);
+      if (requestId !== projectLoadRequestRef.current || currentProjectIdRef.current !== projectId) {
+        return [];
       }
+      const { documents: docs, recovered, stale } = mergeProjectDrafts(projectId, savedDocs);
+      stale.forEach((docId) => clearProjectDraft(projectId, docId));
+      documentsRef.current = docs;
+      setDocuments(docs);
+      setCurrentDocId(docs.length > 0 ? docs[0].id : null);
+      sessionStartWordsRef.current = null;
+      setSessionWords(0);
+      autoCreatedForRef.current = null;
+      setLoadedProjectId(projectId);
+      if (recovered.length > 0) {
+        setSaveStatus("saving");
+        setToasts((prev) => [...prev, {
+          id: genId(),
+          message: recovered.length === 1
+            ? "تم استعادة آخر كتابة غير محفوظة"
+            : `تم استعادة ${recovered.length} مسودات غير محفوظة`,
+          type: "success",
+          duration: 6000,
+        }]);
+        recovered.forEach((doc) => enqueueProjectSave({ projectId, doc }));
+      } else {
+        setSaveStatus("saved");
+      }
+      return docs;
     } catch {}
     return [];
   }, [enqueueProjectSave]);
@@ -400,6 +471,15 @@ export default function App() {
       if (!destroyedRef.current && e && !e.isDestroyed) syncDecorationsFromCache(e);
     }, SPELLCHECK_DEBOUNCE_MS);
   }, [settings.spellcheckEnabled, settings.model, syncDecorationsFromCache]);
+
+  // ── Toast ──
+  const showToast = useCallback((message, type = "info", duration = 4000) => {
+    const id = genId();
+    setToasts((prev) => [...prev, { id, message, type, duration }]);
+  }, []);
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // ── Editor ──
   const editor = useEditor({
@@ -489,6 +569,68 @@ export default function App() {
     immediatelyRender: false,
   });
 
+  const replaceDictationText = useCallback((text, isFinal = false) => {
+    if (!editor || editor.isDestroyed || !dictationRangeRef.current) return;
+    const range = dictationRangeRef.current;
+    const value = `${text}${isFinal && text ? " " : ""}`;
+    const maxPosition = editor.state.doc.content.size;
+    const from = Math.min(range.from, maxPosition);
+    const to = Math.min(range.to, maxPosition);
+    const transaction = editor.state.tr.insertText(value, from, to);
+    editor.view.dispatch(transaction);
+    dictationRangeRef.current = { from, to: from + value.length };
+  }, [editor]);
+
+  const startDictation = useCallback(async () => {
+    if (!editor || !nativeSpeechAvailable) {
+      showToast("الإملاء العربي يحتاج نسخة macOS أو iPad الأصلية", "info");
+      return;
+    }
+    if (dictationRef.current.state !== "idle") {
+      setDictation((current) => ({ ...current, state: "stopping" }));
+      await stopSpeechRecognition();
+      return;
+    }
+
+    editor.commands.focus();
+    const { from, to } = editor.state.selection;
+    dictationRangeRef.current = { from, to };
+    setDictation({ state: "requesting", onDevice: null });
+    const result = await startSpeechRecognition();
+    if (!result?.ok) {
+      dictationRangeRef.current = null;
+      setDictation({ state: "idle", onDevice: null });
+      showToast(result?.error || "تعذّر تشغيل الإملاء العربي", "error");
+    }
+  }, [editor, showToast]);
+
+  useEffect(() => {
+    if (!nativeSpeechAvailable) return undefined;
+    return onSpeechEvent((event) => {
+      if (!event?.type) return;
+      if (event.type === "ready") {
+        setDictation({ state: "listening", onDevice: !!event.onDevice });
+      } else if (event.type === "partial") {
+        replaceDictationText(event.text || "", false);
+      } else if (event.type === "final") {
+        replaceDictationText(event.text || "", true);
+      } else if (event.type === "error") {
+        showToast(event.message || "تعذّر الإملاء العربي", "error", 6000);
+        setDictation({ state: "idle", onDevice: null });
+        dictationRangeRef.current = null;
+      } else if (event.type === "stopped") {
+        setDictation({ state: "idle", onDevice: null });
+        dictationRangeRef.current = null;
+        editor?.commands.focus();
+      }
+    });
+  }, [editor, replaceDictationText, showToast]);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onSpeechToggleShortcut) return undefined;
+    return window.electronAPI.onSpeechToggleShortcut(startDictation);
+  }, [startDictation]);
+
   // Load doc content when switching
   useEffect(() => {
     if (editor && currentDoc) {
@@ -511,13 +653,30 @@ export default function App() {
     };
     window.addEventListener("pagehide", flush);
     window.addEventListener("beforeunload", flush);
+    window.addEventListener("blur", flush);
     document.addEventListener("visibilitychange", handleVisibility);
+    const offMenuSave = window.electronAPI?.onSaveShortcut?.(flush);
     return () => {
       flush();
       window.removeEventListener("pagehide", flush);
       window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("blur", flush);
       document.removeEventListener("visibilitychange", handleVisibility);
+      offMenuSave?.();
     };
+  }, [flushPendingProjectSaves]);
+
+  // Electron holds the window open until the queued disk writes finish (or a
+  // 3s safety timeout), so the final keystrokes before Cmd+Q reach the disk.
+  useEffect(() => {
+    if (!window.electronAPI?.onBeforeClose) return undefined;
+    return window.electronAPI.onBeforeClose(async () => {
+      try {
+        await flushPendingProjectSaves();
+      } finally {
+        window.electronAPI.readyToClose();
+      }
+    });
   }, [flushPendingProjectSaves]);
 
   // Global event handlers
@@ -537,42 +696,48 @@ export default function App() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       autosaveTimersRef.current.forEach((timer) => clearTimeout(timer));
       autosaveTimersRef.current.clear();
+      autosaveMaxTimersRef.current.forEach((timer) => clearTimeout(timer));
+      autosaveMaxTimersRef.current.clear();
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
   }, []);
 
+  const toggleAIAssistant = useCallback(() => {
+    if (isNativeIOS && (!settings.apiBaseUrl || !settings.apiKey || !settings.apiModel)) {
+      setIsAIPanelOpen(false);
+      setIsSettingsOpen(true);
+      return;
+    }
+    setIsAIPanelOpen((value) => !value);
+  }, [settings.apiBaseUrl, settings.apiKey, settings.apiModel]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKey = (e) => {
       if (e.key === "F11") { e.preventDefault(); setIsFocusMode((v) => !v); }
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setIsAIPanelOpen((v) => !v); }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      if (e.metaKey && e.shiftKey && e.key.toLowerCase() === "f") { e.preventDefault(); setIsFocusMode((v) => !v); }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); startDictation(); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); toggleAIAssistant(); }
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.code === "KeyS" || e.key.toLowerCase() === "s")) {
         e.preventDefault();
         flushPendingProjectSaves();
       }
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [flushPendingProjectSaves]);
+  }, [flushPendingProjectSaves, startDictation, toggleAIAssistant]);
 
   // ── Project management ──
   const createProject = useCallback(async (title) => {
     await flushPendingProjectSaves();
     try {
-      const res = await fetch(`${API_URL}/fs/projects`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
-      });
-      if (res.ok) {
-        const project = await res.json();
-        setProjects((prev) => [project, ...prev]);
-        currentProjectIdRef.current = project.id;
-        setCurrentProjectId(project.id);
-        setIsProjectManagerOpen(false);
-        setIsHome(false);
-      }
+      const project = await storage.createProject(title);
+      setProjects((prev) => [project, ...prev]);
+      currentProjectIdRef.current = project.id;
+      setCurrentProjectId(project.id);
+      setIsProjectManagerOpen(false);
+      setIsHome(false);
     } catch {}
   }, [flushPendingProjectSaves]);
 
@@ -599,7 +764,7 @@ export default function App() {
   const deleteProject = useCallback(async (id) => {
     try {
       await flushPendingProjectSaves();
-      await fetch(`${API_URL}/fs/projects/${id}`, { method: "DELETE" });
+      await storage.deleteProject(id);
       clearProjectDrafts(id);
       setProjects((prev) => prev.filter((p) => p.id !== id));
       if (currentProjectId === id) {
@@ -628,16 +793,7 @@ export default function App() {
 
     if (projectMode) {
       try {
-        const res = await fetch(`${API_URL}/fs/projects/${currentProjectId}/docs`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(doc),
-        });
-        const saved = res.ok ? await res.json() : doc;
-        if (!res.ok) {
-          saveProjectDraft(currentProjectId, saved);
-          setSaveStatus("error");
-        }
+        const saved = await storage.createDocument(currentProjectId, doc);
         setDocuments((prev) => {
           const next = [...prev, saved];
           documentsRef.current = next;
@@ -685,7 +841,7 @@ export default function App() {
     if (projectMode) {
       try {
         await cancelDocumentSave(currentProjectId, id);
-        await fetch(`${API_URL}/fs/projects/${currentProjectId}/docs/${id}`, { method: "DELETE" });
+        await storage.deleteDocument(currentProjectId, id);
         loadProjects(); // refresh docCount
       } catch {}
     }
@@ -736,16 +892,20 @@ export default function App() {
   }, [editor, contextMenu, scheduleSpellcheck]);
 
   const updateSettings = useCallback((updates) => {
-    setSettings((prev) => { const next = { ...prev, ...updates }; saveSettings(next); return next; });
-  }, []);
-
-  // ── Toast ──
-  const showToast = useCallback((message, type = "info", duration = 4000) => {
-    const id = genId();
-    setToasts((prev) => [...prev, { id, message, type, duration }]);
-  }, []);
-  const dismissToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setSettings((prev) => {
+      const next = { ...prev, ...updates };
+      if (Object.prototype.hasOwnProperty.call(updates, "apiKey") && window.electronAPI?.setSecret) {
+        window.electronAPI.setSecret("external-api-key", updates.apiKey || "").then((result) => {
+          if (result?.ok && updates.apiKey) localStorage.setItem("aragon-write-secret-stored", "1");
+          if (result?.ok && !updates.apiKey) localStorage.removeItem("aragon-write-secret-stored");
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, "apiKey") && isNativeIOS) {
+        NativeSecrets.set({ key: "external-api-key", value: updates.apiKey || "" }).catch(() => {});
+      }
+      saveSettings(next);
+      return next;
+    });
   }, []);
 
   // ── Ollama control ──
@@ -893,18 +1053,13 @@ export default function App() {
           try {
             const json = JSON.parse(content);
             if (json._format === "aragon-write-backup") {
-              const restore = await fetch(`${API_URL}/backup/import-project`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ json, target: "new" }),
-              });
-              const data = await restore.json();
-              if (restore.ok) {
+              try {
+                const data = await storage.importProject(json);
                 showToast(`تم استيراد مشروع (${data.docCount} فصل)`, "success");
                 await loadProjects();
                 setIsHome(true);
-              } else {
-                showToast(data.error || "فشل الاستيراد", "error");
+              } catch (error) {
+                showToast(error.message || "فشل الاستيراد", "error");
               }
               return;
             }
@@ -949,13 +1104,7 @@ export default function App() {
       if (!currentProjectId) return;
       try {
         await flushPendingProjectSaves();
-        const res = await fetch(`${API_URL}/backup/export-project?id=${encodeURIComponent(currentProjectId)}`);
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          showToast(err.error || "فشل تصدير المشروع", "error");
-          return;
-        }
-        const data = await res.json();
+        const data = await storage.exportProject(currentProjectId);
         const json = JSON.stringify(data, null, 2);
         const projectSafeName = (currentProject?.title || "project").replace(/[\\/:*?"<>|]/g, "_");
         const r = await saveTextAs(
@@ -1006,16 +1155,7 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       };
       try {
-        const res = await fetch(`${API_URL}/fs/projects/${currentProjectId}/docs`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(doc),
-        });
-        const saved = res.ok ? await res.json() : doc;
-        if (!res.ok) {
-          saveProjectDraft(currentProjectId, saved);
-          setSaveStatus("error");
-        }
+        const saved = await storage.createDocument(currentProjectId, doc);
         setDocuments((prev) => {
           const next = [...prev, saved];
           documentsRef.current = next;
@@ -1034,13 +1174,7 @@ export default function App() {
     if (target === "new-project") {
       // Create a new project, then create a doc inside it.
       try {
-        const projRes = await fetch(`${API_URL}/fs/projects`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: importTitle }),
-        });
-        if (!projRes.ok) throw new Error("فشل إنشاء المشروع");
-        const project = await projRes.json();
+        const project = await storage.createProject(importTitle);
         const doc = {
           id: genId(),
           title: importTitle,
@@ -1048,15 +1182,7 @@ export default function App() {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
-        const docRes = await fetch(`${API_URL}/fs/projects/${project.id}/docs`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(doc),
-        });
-        if (!docRes.ok) {
-          saveProjectDraft(project.id, doc);
-          setSaveStatus("error");
-        }
+        await storage.createDocument(project.id, doc);
         await loadProjects();
         openProject(project.id);
         showToast(`تم إنشاء «${importTitle}»`, "success");
@@ -1107,6 +1233,7 @@ export default function App() {
           onCycleTheme={cycleTheme}
           ollamaStatus={ollamaStatus}
           settings={settings}
+          storageStatus={storageStatus}
         />
         {isSettingsOpen && (
           <Settings
@@ -1127,7 +1254,7 @@ export default function App() {
 
       {isFocusMode && (
         <div className="focus-exit-hint">
-          <span>F11 أو ESC — للخروج من وضع التركيز</span>
+          <span>⌘⇧F أو ESC — للخروج من وضع التركيز</span>
         </div>
       )}
 
@@ -1181,7 +1308,19 @@ export default function App() {
         <div className="topbar__spacer" />
 
         <div className="topbar__actions">
-          <button className={`btn-ai${isAIPanelOpen ? " active" : ""}`} onClick={() => setIsAIPanelOpen((v) => !v)} title="مساعد الكتابة الذكي (Ctrl+K)">
+          {nativeSpeechAvailable && (
+            <button
+              className={`btn-dictation btn-dictation--${dictation.state}`}
+              onClick={startDictation}
+              aria-pressed={dictation.state !== "idle"}
+              title={dictation.state === "idle" ? "إملاء عربي (⌘⇧D)" : "إيقاف الإملاء (⌘⇧D)"}
+            >
+              {dictation.state === "idle" ? <Mic size={15} /> : <Square size={13} fill="currentColor" />}
+              <span className="btn-dictation__label">{dictation.state === "idle" ? "إملاء" : dictation.state === "listening" ? "أستمع…" : "لحظة…"}</span>
+            </button>
+          )}
+
+          <button className={`btn-ai${isAIPanelOpen ? " active" : ""}`} onClick={toggleAIAssistant} title="مساعد الكتابة الذكي (⌘K / Ctrl+K)">
             <Sparkles size={15} /><span className="btn-ai__label">المساعد</span>
           </button>
 
@@ -1195,7 +1334,7 @@ export default function App() {
           <button className={`btn-icon${isOutlineOpen ? " active" : ""}`} onClick={() => setIsOutlineOpen((v) => !v)} title="جدول المحتويات" aria-label="جدول المحتويات"><AlignJustify size={16} /></button>
           <button className="btn-icon" onClick={() => setIsDocManagerOpen(true)} title={projectMode ? "فصول المشروع" : "المستندات"} aria-label={projectMode ? "فصول المشروع" : "المستندات"}><FolderOpen size={16} /></button>
           <button className="btn-icon" onClick={cycleTheme} title={`التالي: ${themeNextLabel}`} aria-label={`تبديل المظهر — التالي: ${themeNextLabel}`}>{themeIcon}</button>
-          <button className={`btn-icon${isFocusMode ? " active" : ""}`} onClick={() => setIsFocusMode((v) => !v)} title={isFocusMode ? "الخروج (F11)" : "وضع التركيز (F11)"} aria-label={isFocusMode ? "الخروج من وضع التركيز" : "وضع التركيز"}>{isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+          <button className={`btn-icon${isFocusMode ? " active" : ""}`} onClick={() => setIsFocusMode((v) => !v)} title={isFocusMode ? "الخروج (F11 / ⌘⇧F)" : "وضع التركيز (F11 / ⌘⇧F)"} aria-label={isFocusMode ? "الخروج من وضع التركيز" : "وضع التركيز"}>{isFocusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           <button className="btn-icon" onClick={() => setIsSettingsOpen(true)} title="الإعدادات" aria-label="الإعدادات"><SettingsIcon size={16} /></button>
         </div>
       </header>
@@ -1206,6 +1345,15 @@ export default function App() {
         <OutlineSidebar editor={editor} isOpen={isOutlineOpen} onToggle={() => setIsOutlineOpen((v) => !v)} />
 
         <main className="editor-stage" ref={editorStageRef}>
+          {dictation.state !== "idle" && (
+            <div className="dictation-indicator" role="status" aria-live="polite">
+              <span className={`dictation-indicator__dot${dictation.state === "listening" ? " is-live" : ""}`} />
+              <strong>{dictation.state === "listening" ? "الإملاء العربي يعمل" : dictation.state === "stopping" ? "جارٍ إنهاء الإملاء…" : "جارٍ تجهيز الميكروفون…"}</strong>
+              {dictation.state === "listening" && (
+                <span>{dictation.onDevice ? "المعالجة على هذا الجهاز" : "المعالجة عبر خدمة Apple"}</span>
+              )}
+            </div>
+          )}
           <div className="paper" ref={paperRef} style={{ "--editor-zoom": settings.zoom / 100 }}>
             <EditorContent editor={editor} />
             {contextMenu && (
@@ -1235,6 +1383,7 @@ export default function App() {
         onStartOllama={startOllama}
         onKillOllama={killOllama}
         ollamaAction={ollamaAction}
+        storageStatus={storageStatus}
       />
 
       <Toast toasts={toasts} onDismiss={dismissToast} />

@@ -4,6 +4,7 @@ import {
   Settings as SettingsIcon, Clock, Cloud, ArrowLeft, Plus,
 } from "lucide-react";
 import { getProviderName, isExternal } from "../lib/provider";
+import { isNativeIOS } from "../lib/native";
 
 const COVER_TONES = [
   "#203142",
@@ -46,6 +47,7 @@ export default function Home({
   onCycleTheme,
   ollamaStatus,
   settings,
+  storageStatus,
 }) {
   const providerName = getProviderName(settings);
   const external = isExternal(settings);
@@ -74,8 +76,12 @@ export default function Home({
   const showContinue = !!lastProject && !creatingNew;
 
   const themeIcon = theme === "dark" ? <Sun size={16} /> : theme === "sepia" ? <Palette size={16} /> : <Moon size={16} />;
-  const statusKind = ollamaStatus === "online" ? "on" : ollamaStatus === "checking" ? "check" : "off";
-  const statusText = ollamaStatus === "online"
+  const statusKind = isNativeIOS
+    ? (storageStatus?.iCloud ? "on" : "check")
+    : ollamaStatus === "online" ? "on" : ollamaStatus === "checking" ? "check" : "off";
+  const statusText = isNativeIOS
+    ? (storageStatus?.iCloud ? "iCloud — المزامنة مفعّلة" : "محلي — iCloud بانتظار التفعيل")
+    : ollamaStatus === "online"
     ? `${providerName} — المساعد الذكي جاهز`
     : ollamaStatus === "checking"
     ? "جارٍ التحقق..."
@@ -90,7 +96,7 @@ export default function Home({
             <div className="home__brand-name">أرغون رايت</div>
             <div className="home__brand-tag">
               <span className={`home__dot home__dot--${statusKind}`} />
-              {external && <Cloud size={11} className="home__brand-cloud" />}
+              {(external || isNativeIOS) && <Cloud size={11} className="home__brand-cloud" />}
               <span>{statusText}</span>
             </div>
           </div>

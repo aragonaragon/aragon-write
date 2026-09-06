@@ -1,7 +1,8 @@
 import { FileText, Cpu, AlertCircle, Target, Play, Power, Cloud, CheckCircle2, LoaderCircle } from "lucide-react";
 import { getProviderStatusLabel, isExternal } from "../lib/provider";
+import { isNativeIOS } from "../lib/native";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, saveStatus, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, saveStatus, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings, storageStatus }) {
   const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
   const goalReached = writingGoal > 0 && stats.words >= writingGoal;
   const external = isExternal(settings);
@@ -50,11 +51,11 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       <div className="statusbar__spacer" />
 
       <div className="statusbar__item statusbar__provider">
-        {external && <Cloud size={11} className="statusbar__cloud" />}
-        <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
-        <span>{statusLabel}</span>
+        {(external || isNativeIOS) && <Cloud size={11} className="statusbar__cloud" />}
+        <div className={`statusbar__dot${isNativeIOS ? (storageStatus?.iCloud ? " online" : "") : ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
+        <span>{isNativeIOS ? (storageStatus?.iCloud ? "متزامن مع iCloud" : "محفوظ على الآيباد") : statusLabel}</span>
         {/* Start/kill Ollama controls only make sense in local mode */}
-        {!external && ollamaStatus !== "online" && (
+        {!isNativeIOS && !external && ollamaStatus !== "online" && (
           <button
             className="btn-icon"
             onClick={onStartOllama}
@@ -65,7 +66,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
             <Play size={11} />
           </button>
         )}
-        {!external && ollamaStatus === "online" && (
+        {!isNativeIOS && !external && ollamaStatus === "online" && (
           <button
             className="btn-icon"
             onClick={onKillOllama}

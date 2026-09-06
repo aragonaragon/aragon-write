@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Sparkles, Download, Terminal, Check, ArrowLeft } from "lucide-react";
+import { isNativeIOS } from "../lib/native";
 
 /**
  * One-time welcome / onboarding modal.
@@ -33,6 +34,7 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
   };
 
   const ollamaOk = ollamaStatus === "online";
+  const isApple = window.electronAPI?.platform === "darwin" || /Mac|iPhone|iPad/.test(navigator.platform);
 
   return (
     <div
@@ -46,7 +48,7 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
           <div className="welcome-mark">أ</div>
           <div>
             <div className="welcome-title">مرحباً بك في أرغون رايت</div>
-            <div className="welcome-subtitle">محرر الكتابة العربي — محلي 100%</div>
+            <div className="welcome-subtitle">محرر الكتابة العربي — محلي أولاً</div>
           </div>
         </div>
 
@@ -54,9 +56,11 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
           {step === 0 && (
             <>
               <p className="welcome-text">
-                جميع كتاباتك تُحفظ على جهازك فقط — بدون سحابة، بدون اشتراك، بدون
-                إنترنت. لتفعيل المساعد الذكي تحتاج خطوة واحدة فقط:
+                {isNativeIOS
+                  ? "تُحفظ كتاباتك فوراً على الآيباد وتقدر تكتب بدون إنترنت. مساعد الكتابة اختياري ويعمل عبر مفتاح API خارجي تحفظه من الإعدادات."
+                  : "تُحفظ كتاباتك على جهازك أولاً وتقدر تكتب بدون إنترنت. المساعد الذكي اختياري ويمكن تشغيله محلياً على الماك."}
               </p>
+              {!isNativeIOS && (
               <div className="welcome-steps">
                 <div className="welcome-step">
                   <div className="welcome-step__num">1</div>
@@ -85,7 +89,7 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
                       <Terminal size={14} /> حمّل موديل عربي
                     </div>
                     <div className="welcome-step__desc">
-                      افتح PowerShell ونفّذ:
+                      افتح {isApple ? "Terminal" : "PowerShell"} ونفّذ:
                       <code className="welcome-code">ollama pull gemma4:e4b</code>
                     </div>
                   </div>
@@ -98,20 +102,23 @@ export default function Welcome({ ollamaStatus, apiUrl, onClose, settings }) {
                       <Sparkles size={14} /> ابدأ الكتابة
                     </div>
                     <div className="welcome-step__desc">
-                      حدّد أي نص واضغط Ctrl+K — سيظهر مساعد الكتابة بإجراءاته
+                      حدّد أي نص واضغط {isApple ? "⌘K" : "Ctrl+K"} — سيظهر مساعد الكتابة بإجراءاته
                       الذكية.
                     </div>
                   </div>
                 </div>
               </div>
+              )}
 
               <div className="welcome-status">
                 <span
                   className={`welcome-dot ${
-                    ollamaOk ? "is-on" : ollamaStatus === "checking" ? "is-check" : "is-off"
+                    isNativeIOS ? "is-on" : ollamaOk ? "is-on" : ollamaStatus === "checking" ? "is-check" : "is-off"
                   }`}
                 />
-                {ollamaOk
+                {isNativeIOS
+                  ? "الآيباد جاهز للكتابة والإملاء العربي ومساعد API"
+                  : ollamaOk
                   ? "Ollama متصل — كل شيء جاهز"
                   : ollamaStatus === "checking"
                   ? "جارٍ فحص Ollama..."

@@ -1,0 +1,10 @@
+{
+  "appId": "com.aragon.write",
+  "appName": "Aragon Write",
+  "webDir": "frontend/dist",
+  "ios": {
+    "contentInset": "always",
+    "preferredContentMode": "mobile",
+    "scrollEnabled": true
+  }
+}
