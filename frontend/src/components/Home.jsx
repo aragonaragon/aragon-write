@@ -1,16 +1,15 @@
 import { useState } from "react";
 import { BookOpen, BookPlus, FileText, Trash2, Sun, Moon, Palette, Settings as SettingsIcon, Clock, Cloud } from "lucide-react";
 import { getProviderName, isExternal } from "../lib/provider";
+import { isNativeIOS } from "../lib/native";
 
 const GRADIENTS = [
-  "linear-gradient(135deg,#667eea,#764ba2)",
-  "linear-gradient(135deg,#f093fb,#f5576c)",
-  "linear-gradient(135deg,#4facfe,#00f2fe)",
-  "linear-gradient(135deg,#43e97b,#38f9d7)",
-  "linear-gradient(135deg,#fa709a,#fee140)",
-  "linear-gradient(135deg,#a18cd1,#fbc2eb)",
-  "linear-gradient(135deg,#fccb90,#d57eeb)",
-  "linear-gradient(135deg,#84fab0,#8fd3f4)",
+  "linear-gradient(145deg,#6f4f3d,#9a755d)",
+  "linear-gradient(145deg,#485d58,#71837d)",
+  "linear-gradient(145deg,#5d596f,#858096)",
+  "linear-gradient(145deg,#765253,#9c7373)",
+  "linear-gradient(145deg,#4d5d70,#738297)",
+  "linear-gradient(145deg,#756447,#9b8969)",
 ];
 
 function pickGradient(id) {
@@ -43,6 +42,7 @@ export default function Home({
   onCycleTheme,
   ollamaStatus,
   settings,
+  storageStatus,
 }) {
   const providerName = getProviderName(settings);
   const external = isExternal(settings);
@@ -75,9 +75,11 @@ export default function Home({
           <div>
             <div className="home__brand-name">أرغون رايت</div>
             <div className="home__brand-tag">
-              <span className={`home__dot home__dot--${ollamaStatus === "online" ? "on" : ollamaStatus === "checking" ? "check" : "off"}`} />
-              {external && <Cloud size={11} style={{ opacity: 0.7 }} />}
-              {ollamaStatus === "online"
+              <span className={`home__dot home__dot--${isNativeIOS ? storageStatus?.iCloud ? "on" : "check" : ollamaStatus === "online" ? "on" : ollamaStatus === "checking" ? "check" : "off"}`} />
+              {(external || isNativeIOS) && <Cloud size={11} style={{ opacity: 0.7 }} />}
+              {isNativeIOS
+                ? storageStatus?.iCloud ? "iCloud — المزامنة مفعّلة" : "محلي — iCloud بانتظار التفعيل"
+                : ollamaStatus === "online"
                 ? `${providerName} — المساعد الذكي جاهز`
                 : ollamaStatus === "checking"
                 ? "جارٍ التحقق..."
@@ -94,8 +96,8 @@ export default function Home({
 
       <main className="home__main">
         <div className="home__intro">
-          <h1 className="home__title">مرحباً، وش بنكتب اليوم؟</h1>
-          <p className="home__subtitle">اختر مشروعاً تكمل عليه، أو ابدأ واحداً جديداً.</p>
+          <h1 className="home__title">وش بنكتب اليوم؟</h1>
+          <p className="home__subtitle">افتح كتابك وكمل من حيث توقفت.</p>
         </div>
 
         {/* Continue last project */}
@@ -162,7 +164,7 @@ export default function Home({
             ) : (
               <button className="home__new-card" onClick={() => setCreatingNew(true)}>
                 <BookPlus size={28} />
-                <span>مشروع جديد</span>
+                <span>كتاب جديد</span>
               </button>
             )}
 
@@ -199,8 +201,8 @@ export default function Home({
           {projects.length === 0 && !creatingNew && (
             <div className="home__empty">
               <div className="home__empty-icon">📚</div>
-              <div>ليس لديك أي مشروع بعد.</div>
-              <div className="home__empty-hint">اضغط «مشروع جديد» أعلاه لتبدأ، أو جرّب «كتابة سريعة» بدون مشروع.</div>
+              <div>ليس لديك أي كتاب بعد.</div>
+              <div className="home__empty-hint">اضغط «كتاب جديد» لتبدأ، أو افتح مسودة سريعة.</div>
             </div>
           )}
         </section>
@@ -210,8 +212,8 @@ export default function Home({
           <button className="home__quick-btn" onClick={onQuickWrite}>
             <FileText size={16} />
             <div>
-              <div className="home__quick-title">كتابة سريعة بدون مشروع</div>
-              <div className="home__quick-desc">للملاحظات والمسودات — تُحفظ محلياً على جهازك</div>
+              <div className="home__quick-title">مسودة سريعة</div>
+              <div className="home__quick-desc">فكرة عابرة أو نص قصير خارج كتبك</div>
             </div>
           </button>
         </section>

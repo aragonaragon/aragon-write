@@ -7,7 +7,7 @@
 **اكتب روايتك أو محتواك — محلي 100%، بدون إنترنت، بدون اشتراك**
 
 [![Download](https://img.shields.io/github/v/release/aragonaragon/aragon-write?label=تحميل&style=for-the-badge&color=c8956c)](https://github.com/aragonaragon/aragon-write/releases/latest)
-[![Platform](https://img.shields.io/badge/Windows-x64-blue?style=for-the-badge&logo=windows)](https://github.com/aragonaragon/aragon-write/releases/latest)
+[![Platform](https://img.shields.io/badge/macOS%20%7C%20iPadOS-Apple%20Silicon-black?style=for-the-badge&logo=apple)](#macos-و-ipad)
 [![License](https://img.shields.io/badge/مجاني-100%25-green?style=for-the-badge)](https://github.com/aragonaragon/aragon-write/releases/latest)
 
 </div>
@@ -41,6 +41,7 @@
 | 💬 **محادثة مع المستند** | اسأل المساعد عن أي شي — معلومة، فكرة، أو شرح، مع سياق ذكي من نصك |
 | 🎬 **سكربت يوتيوب** | حوّل قائمة أفكار إلى سكربت كامل جاهز للقراءة |
 | ✍️ **محرر WYSIWYG** | تنسيق كامل مع دعم RTL العربي |
+| 🎙️ **إملاء عربي** | تحويل الكلام إلى نص عربي على macOS وiPad، مع معالجة محلية حين يدعمها الجهاز |
 | 🎯 **Focus Mode** | F11 — يخفي كل شيء إلا النص |
 | ⌨️ **Typewriter Mode** | يثبّت المؤشر في المنتصف |
 | 🌙 **3 ثيمات** | فاتح / داكن / عاجي |
@@ -99,12 +100,51 @@ npm run dist         # بناء portable .exe
 
 **Stack:**
 ```
-Frontend:  React 18 · TipTap 2 · Vite 5
+Frontend:  React 18 · TipTap 2 · Vite 8
 Backend:   Node.js · Express 4 · esbuild
 Desktop:   Electron 41
+iPad:      Capacitor 8 · Swift · WKWebView
 AI:        Ollama (local LLM)
 Storage:   JSON files — ~/Documents/AragonWrite/
 ```
+
+### macOS وiPad
+
+#### macOS (Apple silicon)
+
+استخدم Node 22 ثم ابنِ التطبيق:
+
+```bash
+nvm use
+npm ci
+npm run dist:mac
+```
+
+ستجد النسخة في:
+
+`app-release/Aragon Write-darwin-arm64/Aragon Write.app`
+
+البناء المحلي يستخدم توقيعاً مؤقتاً (ad-hoc). النشر أو iCloud يحتاجان هوية
+Apple Developer وتوقيعاً رسمياً.
+
+#### iPad
+
+```bash
+nvm use
+npm ci
+npm run ios:sync
+npm run ios:open
+```
+
+من Xcode اختر حساب Apple والـ Team ثم شغّل المشروع على iPad. المشروع مضبوط
+للـ iPad فقط، ويحفظ محلياً أولاً ويستخدم حاوية iCloud عند توفر توقيع وصلاحية
+iCloud الصحيحة. ملف المشروع:
+
+`ios/App/App.xcodeproj`
+
+الإملاء العربي يعمل من زر **إملاء** أو الاختصار `⌘⇧D` على الماك. أول تشغيل
+يطلب إذن التعرف على الكلام والمايك. جلسة الإملاء تتوقف تلقائياً قبل حد Apple
+ثم يمكن تشغيلها مباشرة مرة ثانية.
 
 </details>
 

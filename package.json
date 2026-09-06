@@ -1,7 +1,7 @@
 {
   "name": "aragon-write",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.6.0",
   "main": "electron/main.cjs",
   "workspaces": [
     "frontend",
@@ -12,15 +12,29 @@
     "dev:frontend": "npm run dev --workspace frontend",
     "dev:backend": "npm run dev --workspace backend",
     "build": "npm run build --workspace frontend",
+    "build:speech:mac": "node electron/scripts/build-speech-mac.cjs",
+    "ios:add": "npm run build && cap add ios",
+    "ios:sync": "npm run build && cap sync ios",
+    "ios:open": "cap open ios",
     "build:backend": "esbuild backend/src/server.js --bundle --platform=node --format=cjs --outfile=backend/dist/server.cjs",
     "electron": "npm run build && electron .",
     "electron:dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\" \"electron . --dev\"",
-    "dist": "npm run build && npm run build:backend && electron-packager . \"Aragon Write\" --platform=win32 --arch=x64 --out=app-release --overwrite --no-asar --icon=electron/icon.ico --app-version=2.4.0 --app-copyright=\"Aragon\" --extra-resource=backend/dist/server.cjs \"--ignore=(^/(node_modules|app-release|dist-installer|backend/(src|dist|node_modules)|frontend/(src|node_modules|index\\.html|vite\\.config\\.js)|build\\.bat|launch\\.bat|create-shortcut\\.ps1|README\\.md|package-lock\\.json|\\.gitignore|\\.git|\\.claude|\\.vscode|\\.idea)|/electron/build-icon\\.ps1$)\" --prune=true"
+    "dist": "npm run dist:mac",
+    "dist:mac": "npm run build && npm run build:backend && npm run build:speech:mac && electron-packager . \"Aragon Write\" --platform=darwin --arch=arm64 --out=app-release --overwrite --no-asar --icon=electron/icon.icns --extend-info=electron/mac-info.plist --app-bundle-id=com.aragon.write --app-category-type=public.app-category.productivity --app-version=2.6.0 --app-copyright=\"Aragon\" --extra-resource=backend/dist/server.cjs --extra-resource=electron/bin/AragonSpeechHelper.app \"--ignore=(^/(node_modules|app-release|dist-installer|backend/(src|dist|node_modules)|frontend/(src|node_modules|index\\.html|vite\\.config\\.js)|build\\.bat|launch\\.bat|create-shortcut\\.ps1|README\\.md|package-lock\\.json|\\.gitignore|\\.git|\\.claude|\\.vscode|\\.idea)|/electron/build-icon\\.ps1$)\" --prune=true && codesign --force --deep --sign - \"app-release/Aragon Write-darwin-arm64/Aragon Write.app\"",
+    "dist:win": "npm run build && npm run build:backend && electron-packager . \"Aragon Write\" --platform=win32 --arch=x64 --out=app-release --overwrite --no-asar --icon=electron/icon.ico --app-version=2.6.0 --app-copyright=\"Aragon\" --extra-resource=backend/dist/server.cjs \"--ignore=(^/(node_modules|app-release|dist-installer|backend/(src|dist|node_modules)|frontend/(src|node_modules|index\\.html|vite\\.config\\.js)|build\\.bat|launch\\.bat|create-shortcut\\.ps1|README\\.md|package-lock\\.json|\\.gitignore|\\.git|\\.claude|\\.vscode|\\.idea)|/electron/build-icon\\.ps1$)\" --prune=true"
+  },
+  "engines": {
+    "node": ">=20 <25"
   },
   "devDependencies": {
-    "@electron/packager": "^19.1.0",
-    "concurrently": "^9.1.2",
-    "electron": "^41.2.1",
-    "esbuild": "^0.28.0"
+    "@capacitor/cli": "8.4.2",
+    "@electron/packager": "20.3.0",
+    "concurrently": "9.2.4",
+    "electron": "41.10.5",
+    "esbuild": "0.28.2"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.0",
+    "@capacitor/ios": "8.5.0"
   }
 }

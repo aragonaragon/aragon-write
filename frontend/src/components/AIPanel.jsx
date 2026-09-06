@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X, Sparkles, RefreshCw, Minimize2, Maximize2,
   ArrowRight, Languages, CheckCircle, Lightbulb,
   FileText, Type, Send, Copy, Check, PenLine,
   ChevronLeft, Video,
 } from "lucide-react";
+import { isNativeIOS } from "../lib/native";
+import { nativeGenerateAI } from "../lib/externalAI";
 
 // Strip leftover Markdown artifacts from model output (some models keep emitting
 // `**bold**`, `### headers`, and `---` dividers despite the system prompt)
@@ -60,6 +62,11 @@ function useStream(apiUrl) {
     setStreaming(true);
 
     try {
+      if (isNativeIOS) {
+        const output = await nativeGenerateAI(body);
+        setText(output);
+        return;
+      }
       const res = await fetch(`${apiUrl}/ai/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -224,10 +231,11 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
     const message = chatInput.trim();
     const docContent = editor ? editor.getText() : "";
     setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: message }]);
-
-    // Add placeholder for assistant response
-    const assistantIndex = chatMessages.length + 1;
+    setChatMessages((prev) => [
+      ...prev,
+      { role: "user", content: message },
+      { role: "assistant", content: "__streaming__" },
+    ]);
 
     await run({
       action: "chat",
@@ -237,22 +245,18 @@ export default function AIPanel({ editor, isOpen, onClose, settings, apiUrl }) {
       ...resolveProvider(),
     });
 
-    // After streaming, move result to chat messages
-    setChatMessages((prev) => [...prev, { role: "assistant", content: "__streaming__" }]);
     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
   // When streaming ends, replace __streaming__ message with actual result
-  const prevStreamingRef = useRef(streaming);
-  if (prevStreamingRef.current !== streaming) {
-    prevStreamingRef.current = streaming;
+  useEffect(() => {
     if (!streaming && result && tab === "chat") {
       setChatMessages((prev) =>
         prev.map((m) => (m.content === "__streaming__" ? { ...m, content: result } : m))
       );
       clear();
     }
-  }
+  }, [streaming, result, tab, clear]);
 
   if (!isOpen) return null;
 

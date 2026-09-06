@@ -18,6 +18,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
    */
   isElectron: true,
 
+  /** Host platform used for labels, shortcuts, and Apple-specific UI. */
+  platform: process.platform,
+
   /**
    * Open the OS "Save As..." dialog.
    * @param {object} options - { title, defaultPath, filters: [{name, extensions}] }
@@ -40,4 +43,36 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * @returns {Promise<{ok: boolean, error?: string}>}
    */
   exportPdf: (html, savePath) => ipcRenderer.invoke("pdf:export", html, savePath),
+
+  /** Flush the active document before Electron closes the window. */
+  onBeforeClose: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:before-close", listener);
+    return () => ipcRenderer.removeListener("app:before-close", listener);
+  },
+
+  readyToClose: () => ipcRenderer.send("app:ready-to-close"),
+
+  /** Menu "حفظ" (Cmd+S) asks the renderer to write the active document now. */
+  onSaveShortcut: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("app:save-shortcut", listener);
+    return () => ipcRenderer.removeListener("app:save-shortcut", listener);
+  },
+
+  getSecret: (key) => ipcRenderer.invoke("secrets:get", key),
+  setSecret: (key, value) => ipcRenderer.invoke("secrets:set", key, value),
+
+  startSpeechRecognition: () => ipcRenderer.invoke("speech:start"),
+  stopSpeechRecognition: () => ipcRenderer.invoke("speech:stop"),
+  onSpeechEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on("speech:event", listener);
+    return () => ipcRenderer.removeListener("speech:event", listener);
+  },
+  onSpeechToggleShortcut: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("speech:toggle-shortcut", listener);
+    return () => ipcRenderer.removeListener("speech:toggle-shortcut", listener);
+  },
 });

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, RefreshCw, CheckCircle, AlertCircle, Power, Play, Eye, EyeOff, Cloud, HardDrive, Plug } from "lucide-react";
+import { isNativeIOS, NativeSecrets } from "../lib/native";
+import { nativeListModels, nativeTestProvider } from "../lib/externalAI";
 
 // Built-in presets for popular OpenAI-compatible providers.
 // Users can edit Base URL/Model after applying, or fill them in manually.
@@ -7,20 +9,20 @@ const PROVIDER_PRESETS = {
   groq: {
     label: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    model: "llama-3.3-70b-versatile",
-    hint: "مجاني وسريع — احصل على المفتاح من console.groq.com",
+    model: "openai/gpt-oss-120b",
+    hint: "سريع ومتعدد اللغات — احصل على المفتاح من console.groq.com",
   },
   openrouter: {
     label: "OpenRouter",
     baseUrl: "https://openrouter.ai/api/v1",
-    model: "google/gemini-2.0-flash-exp:free",
+    model: "openrouter/auto",
     hint: "موديلات كثيرة بسعر موحّد — openrouter.ai/keys",
   },
   deepseek: {
     label: "DeepSeek",
-    baseUrl: "https://api.deepseek.com/v1",
-    model: "deepseek-chat",
-    hint: "رخيص وقوي بالعربي — platform.deepseek.com",
+    baseUrl: "https://api.deepseek.com",
+    model: "deepseek-v4-flash",
+    hint: "اقتصادي ومناسب للكتابة — platform.deepseek.com",
   },
 };
 
@@ -61,7 +63,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
     }
   };
 
-  useEffect(() => { fetchModels(); }, []); // eslint-disable-line
+  useEffect(() => { if (!isNativeIOS) fetchModels(); }, []); // eslint-disable-line
 
   const saveOllamaUrl = () => {
     onUpdate({ ollamaUrl });
@@ -106,13 +108,20 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
   };
 
   const fetchExternalModels = async () => {
-    if (!settings.apiBaseUrl) {
-      setExtTest({ ok: false, error: "أدخل Base URL أولاً" });
+    if (!settings.apiBaseUrl || !settings.apiKey) {
+      setExtTest({ ok: false, error: "أدخل رابط المزود ومفتاح API أولاً" });
       return;
     }
     setLoadingExtModels(true);
     setExtTest(null);
     try {
+      if (isNativeIOS) {
+        await NativeSecrets.set({ key: "external-api-key", value: settings.apiKey || "" });
+        const models = await nativeListModels(settings.apiBaseUrl);
+        setExtModels(models);
+        if (models.length === 0) setExtTest({ ok: false, error: "لم يتم العثور على موديلات" });
+        return;
+      }
       const res = await fetch(`${apiUrl}/models/external`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -133,13 +142,18 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
   };
 
   const testExternalConnection = async () => {
-    if (!settings.apiBaseUrl) {
-      setExtTest({ ok: false, error: "أدخل Base URL أولاً" });
+    if (!settings.apiBaseUrl || !settings.apiKey) {
+      setExtTest({ ok: false, error: "أدخل رابط المزود ومفتاح API أولاً" });
       return;
     }
     setTestingExt(true);
     setExtTest(null);
     try {
+      if (isNativeIOS) {
+        await NativeSecrets.set({ key: "external-api-key", value: settings.apiKey || "" });
+        setExtTest(await nativeTestProvider(settings.apiBaseUrl));
+        return;
+      }
       const res = await fetch(`${apiUrl}/health/provider`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -164,19 +178,20 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
 
         <div className="modal__body">
 
+          <>
           {/* ── مصدر الذكاء الاصطناعي ── */}
           <div className="settings-section">
             <div className="settings-section__title">مصدر الذكاء الاصطناعي</div>
 
             <div className="provider-toggle">
-              <button
+              {!isNativeIOS && <button
                 type="button"
                 className={`provider-tab${settings.provider !== "openai_compat" ? " active" : ""}`}
                 onClick={() => onUpdate({ provider: "ollama" })}
               >
                 <HardDrive size={14} />
                 محلي (Ollama)
-              </button>
+              </button>}
               <button
                 type="button"
                 className={`provider-tab${settings.provider === "openai_compat" ? " active" : ""}`}
@@ -239,8 +254,8 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                       {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
                   </div>
-                  <span className="settings-field__hint" style={{ color: "#d97706" }}>
-                    ⚠ المفتاح يُحفظ على جهازك في localStorage بدون تشفير. لا تشاركه ولا تستخدمه على جهاز مشترك.
+                  <span className="settings-field__hint">
+                    يُحفظ المفتاح مشفّراً في Keychain على {isNativeIOS ? "الآيباد" : "macOS"}، ولا يدخل ضمن ملفات الكتب أو النسخ الاحتياطية.
                   </span>
                 </div>
 
@@ -251,7 +266,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                       type="button"
                       className="btn-icon"
                       onClick={fetchExternalModels}
-                      disabled={loadingExtModels || !settings.apiBaseUrl}
+                      disabled={loadingExtModels || !settings.apiBaseUrl || !settings.apiKey}
                       title="جلب قائمة الموديلات"
                     >
                       <RefreshCw size={14} style={{ animation: loadingExtModels ? "spin 1s linear infinite" : "none" }} />
@@ -283,7 +298,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                     type="button"
                     className="btn btn-secondary"
                     onClick={testExternalConnection}
-                    disabled={testingExt || !settings.apiBaseUrl}
+                    disabled={testingExt || !settings.apiBaseUrl || !settings.apiKey}
                     style={{ display: "flex", alignItems: "center", gap: 6 }}
                   >
                     <Plug size={13} />
@@ -323,7 +338,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
           </div>
 
           {/* ── Ollama ── */}
-          <div className="settings-section">
+          {!isNativeIOS && <div className="settings-section">
             <div className="settings-section__title">إعدادات Ollama (الذكاء الاصطناعي)</div>
 
             <div className="settings-field">
@@ -405,7 +420,9 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
                 إيقاف Ollama يحرر الذاكرة (RAM) تماماً. شغّله مجدداً عند الحاجة للـ AI.
               </span>
             </div>
-          </div>
+          </div>}
+
+          </>
 
           {/* ── المظهر ── */}
           <div className="settings-section">
@@ -459,6 +476,7 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
             </div>
           </div>
 
+          {!isNativeIOS && <>
           {/* ── التدقيق الإملائي ── */}
           <div className="settings-section">
             <div className="settings-section__title">التدقيق الإملائي</div>
@@ -477,14 +495,17 @@ export default function Settings({ settings, onUpdate, onClose, apiUrl, onOllama
               </span>
             </div>
           </div>
+          </>}
 
           {/* ── عن التطبيق ── */}
           <div className="settings-section">
             <div className="settings-section__title">عن التطبيق</div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 2 }}>
-              <div>🔒 محلي 100% — بدون إنترنت، بدون سحابة، بدون تسجيل</div>
-              <div>💾 المشاريع محفوظة في مجلد على قرصك الصلب</div>
-              <div>🤖 يتكامل مع Ollama لتشغيل موديلات AI محلية</div>
+              <div>🔒 محلي أولاً — الكتابة والحفظ يعملان بدون إنترنت</div>
+              <div>💾 {isNativeIOS ? "الكتب محفوظة على الآيباد أو iCloud عند تفعيله" : "المشاريع محفوظة في مجلد آمن على جهازك"}</div>
+              {!isNativeIOS && <div>🤖 يتكامل مع Ollama لتشغيل موديلات AI محلية</div>}
+              {isNativeIOS && <div>🤖 مساعد كتابة عبر مزود API خارجي، ومفتاحه محفوظ في Keychain</div>}
+              {isNativeIOS && <div>🎙️ إملاء عربي مدمج باستخدام خدمة Apple</div>}
               <div>📝 محرر نصوص WYSIWYG مع دعم كامل للعربية RTL</div>
             </div>
           </div>

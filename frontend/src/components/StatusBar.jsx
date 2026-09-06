@@ -1,7 +1,8 @@
-import { FileText, Cpu, AlertCircle, Target, Play, Power, Cloud } from "lucide-react";
+import { FileText, AlertCircle, Target, Play, Power, Cloud, Check, LoaderCircle } from "lucide-react";
 import { getProviderStatusLabel, isExternal } from "../lib/provider";
+import { isNativeIOS } from "../lib/native";
 
-export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings }) {
+export default function StatusBar({ stats, issueCount, ollamaStatus, model, docCount, sessionWords, writingGoal, onStartOllama, onKillOllama, ollamaAction, settings, saveStatus = "saved", storageStatus }) {
   const goalPct = writingGoal > 0 ? Math.min(100, (stats.words / writingGoal) * 100) : 0;
   const goalReached = writingGoal > 0 && stats.words >= writingGoal;
   const external = isExternal(settings);
@@ -50,11 +51,11 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
       <div className="statusbar__spacer" />
 
       <div className="statusbar__item" style={{ gap: 6 }}>
-        {external && <Cloud size={11} style={{ color: "var(--text-muted)" }} />}
-        <div className={`statusbar__dot${ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
-        <span>{statusLabel}</span>
+        {(external || isNativeIOS) && <Cloud size={11} style={{ color: "var(--text-muted)" }} />}
+        <div className={`statusbar__dot${isNativeIOS ? storageStatus?.iCloud ? " online" : "" : ollamaStatus === "online" ? " online" : ollamaStatus === "error" ? " error" : ""}`} />
+        <span>{isNativeIOS ? storageStatus?.iCloud ? "متزامن مع iCloud" : "محفوظ على الآيباد" : statusLabel}</span>
         {/* Start/kill Ollama controls only make sense in local mode */}
-        {!external && ollamaStatus !== "online" && (
+        {!isNativeIOS && !external && ollamaStatus !== "online" && (
           <button
             className="btn-icon"
             onClick={onStartOllama}
@@ -65,7 +66,7 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
             <Play size={11} />
           </button>
         )}
-        {!external && ollamaStatus === "online" && (
+        {!isNativeIOS && !external && ollamaStatus === "online" && (
           <button
             className="btn-icon"
             onClick={onKillOllama}
@@ -78,17 +79,14 @@ export default function StatusBar({ stats, issueCount, ollamaStatus, model, docC
         )}
       </div>
 
-      <div className="statusbar__item">
-        <Cpu size={12} />
-        <span>{model}</span>
-      </div>
-
-      <div className="statusbar__item">
+      <div className="statusbar__item statusbar__item--secondary" title={model}>
         <span>{docCount} مستند</span>
       </div>
 
-      <div className="statusbar__item" style={{ color: "var(--text-muted)", fontSize: 11 }}>
-        حفظ تلقائي
+      <div className={`statusbar__item save-state save-state--${saveStatus}`} aria-live="polite">
+        {saveStatus === "saving" && <LoaderCircle size={11} className="save-state__spinner" />}
+        {saveStatus === "saved" && <Check size={11} />}
+        <span>{saveStatus === "dirty" ? "تغييرات غير محفوظة" : saveStatus === "saving" ? "جارٍ الحفظ" : saveStatus === "error" ? "تعذّر الحفظ" : "تم الحفظ"}</span>
       </div>
     </footer>
   );

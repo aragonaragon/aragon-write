@@ -2,18 +2,16 @@ import { useState, useRef, useEffect } from "react";
 import {
   Bold, Italic, Underline, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  List, ListOrdered, Quote, Code, Minus,
+  List, ListOrdered, Quote, Minus,
   Undo2, Redo2, Link, Highlighter, RemoveFormatting,
   Type, ChevronDown, X
 } from "lucide-react";
 
 const FONTS = [
-  { value: "Amiri, serif", label: "أميري" },
-  { value: "Cairo, sans-serif", label: "القاهرة" },
-  { value: "Traditional Arabic, serif", label: "عربي تقليدي" },
-  { value: "Georgia, serif", label: "Georgia" },
-  { value: "Arial, sans-serif", label: "Arial" },
-  { value: "Times New Roman, serif", label: "Times New Roman" },
+  { value: "Amiri, 'Geeza Pro', serif", label: "أميري" },
+  { value: "'Geeza Pro', sans-serif", label: "جيزة" },
+  { value: "'Al Bayan', serif", label: "البيان" },
+  { value: "'SF Arabic', -apple-system, sans-serif", label: "خط النظام" },
 ];
 
 const SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
@@ -194,10 +192,10 @@ export default function Toolbar({ editor }) {
     <div className="toolbar" role="toolbar" aria-label="شريط تنسيق النص">
       {/* Undo / Redo */}
       <div className="toolbar__group">
-        <TBtn title="تراجع (Ctrl+Z)" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
+        <TBtn title="تراجع (⌘Z)" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
           <Undo2 size={15} />
         </TBtn>
-        <TBtn title="إعادة (Ctrl+Y)" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}>
+        <TBtn title="إعادة (⌘⇧Z)" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}>
           <Redo2 size={15} />
         </TBtn>
       </div>
@@ -270,20 +268,17 @@ export default function Toolbar({ editor }) {
 
       {/* Text formatting */}
       <div className="toolbar__group">
-        <TBtn title="غامق (Ctrl+B)" isActive={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
+        <TBtn title="غامق (⌘B)" isActive={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
           <Bold size={15} />
         </TBtn>
-        <TBtn title="مائل (Ctrl+I)" isActive={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}>
+        <TBtn title="مائل (⌘I)" isActive={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}>
           <Italic size={15} />
         </TBtn>
-        <TBtn title="تسطير (Ctrl+U)" isActive={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+        <TBtn title="تسطير (⌘U)" isActive={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
           <Underline size={15} />
         </TBtn>
         <TBtn title="يتوسطه خط" isActive={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}>
           <Strikethrough size={15} />
-        </TBtn>
-        <TBtn title="كود" isActive={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()}>
-          <Code size={15} />
         </TBtn>
       </div>
 
