@@ -18,10 +18,14 @@
 
 <div align="center">
 
+### [⬇️ تحميل أرغون رايت — macOS (Apple Silicon)](https://github.com/aragonaragon/aragon-write/releases/latest)
 ### [⬇️ تحميل أرغون رايت — Windows](https://github.com/aragonaragon/aragon-write/releases/latest)
 
 </div>
 
+**ماك:** حمّل `Aragon-Write-macOS-arm64-<version>.zip`، فك الضغط، واسحب `Aragon Write.app` إلى مجلد Applications. أول مرة: كليك يمين ← افتح (التوقيع محلي بدون حساب مطوّر).
+
+**ويندوز:**
 1. حمّل `Aragon-Write-portable.zip`
 2. فك الضغط في أي مكان
 3. دبل كليك على `Aragon Write.exe`
@@ -96,7 +100,7 @@ npm install
 npm run dev          # browser على localhost:5173
 npm run electron:dev # Electron window
 npm run dist:win     # Windows: app-release/Aragon Write-win32-x64/
-npm run dist:mac     # macOS (شغّله على ماك): app-release/Aragon Write-darwin-arm64/ و -x64/
+npm run dist:mac     # macOS (شغّله على ماك): app-release/Aragon Write-darwin-arm64/
 ```
 
 **بناء نسخة الماك:** انسخ المشروع على الماك، ثم `npm install && npm run dist:mac`. يطلع لك `Aragon Write.app` لأجهزة Apple Silicon و Intel. النسخة غير موقّعة، فأول تشغيل: كليك يمين على التطبيق → فتح.
